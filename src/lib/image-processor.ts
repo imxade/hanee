@@ -53,6 +53,10 @@ export async function convertImage(
 	outputMime: string,
 	quality: number,
 ): Promise<ProcessedFile> {
+	if (outputMime === "image/svg+xml") {
+		return imageToSvg(file, { numberofcolors: 50 })
+	}
+
 	const { img, width, height, close } = await loadDrawable(file)
 	const canvas = new OffscreenCanvas(width, height)
 	const ctx = canvas.getContext("2d")
@@ -339,6 +343,7 @@ function mimeToExt(mime: string): string {
 		"image/avif": ".avif",
 		"image/bmp": ".bmp",
 		"image/gif": ".gif",
+		"image/svg+xml": ".svg",
 	}
 	return map[mime] ?? ".png"
 }
