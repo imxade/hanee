@@ -6,8 +6,8 @@ import viteReact from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
+import crypto from "node:crypto"
 
-// 🔥 COOP/COEP middleware (fixes workers, wasm, ffmpeg)
 function coopCoepMiddleware() {
 	return {
 		name: "coop-coep-middleware",
@@ -76,6 +76,7 @@ export default defineConfig({
 			devOptions: {
 				enabled: true,
 			},
+			additionalPrecacheEntries: [{ url: "/", revision: crypto.randomUUID() }],
 			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB
 		}),
 	],
