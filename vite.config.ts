@@ -48,6 +48,13 @@ export default defineConfig({
 		coopCoepMiddleware(),
 
 		nitro({
+			publicAssets: [
+				{
+					baseURL: "/",
+					dir: "dist",
+					maxAge: 0,
+				},
+			],
 			rollupConfig: { external: [/^@sentry\//] },
 			routeRules: {
 				"/**": {
@@ -74,6 +81,7 @@ export default defineConfig({
 			swDest: "sw.js",
 			globPatterns: ["**/*"],
 			globDirectory: ".output/public",
+			additionalPrecacheEntries: [{ url: "/", revision: String(Date.now()) }],
 			injectionPoint: "self.__WB_MANIFEST",
 			rollupFormat: "iife",
 			devOptions: {

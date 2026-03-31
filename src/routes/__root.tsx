@@ -39,6 +39,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		prefetchFFmpeg()
 		// Preload the tool component chunk correctly using the router
 		router.preloadRoute({ to: "/tool/$id", params: { id: "image-convert" } })
+		if ("serviceWorker" in navigator) {
+			navigator.serviceWorker.register("/sw.js")
+		}
 	}, [router])
 
 	return (
