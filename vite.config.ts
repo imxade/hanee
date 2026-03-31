@@ -62,7 +62,11 @@ export default defineConfig({
 
 		tsconfigPaths({ projects: ["./tsconfig.json"] }),
 		tailwindcss(),
-		tanstackStart(),
+		tanstackStart({
+			router: {
+				autoCodeSplitting: false,
+			},
+		}),
 		viteReact(),
 
 		serwist({
