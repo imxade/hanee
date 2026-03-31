@@ -6,7 +6,6 @@ import viteReact from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
-import crypto from "node:crypto"
 
 function coopCoepMiddleware() {
 	return {
@@ -76,7 +75,6 @@ export default defineConfig({
 			devOptions: {
 				enabled: true,
 			},
-			additionalPrecacheEntries: [{ url: "/", revision: crypto.randomUUID() }],
 			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB
 		}),
 	],
