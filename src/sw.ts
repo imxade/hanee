@@ -1,4 +1,3 @@
-import { defaultCache } from "@serwist/vite/worker"
 import type { PrecacheEntry } from "serwist"
 import { Serwist } from "serwist"
 
@@ -11,7 +10,6 @@ const serwist = new Serwist({
 	skipWaiting: true,
 	clientsClaim: true,
 	navigationPreload: false,
-	runtimeCaching: defaultCache,
 })
 
 serwist.addEventListeners()
