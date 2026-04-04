@@ -5,7 +5,6 @@ import {
 	useRouter,
 } from "@tanstack/react-router"
 import { useEffect } from "react"
-import Footer from "../components/Footer"
 import Header from "../components/Header"
 import { prefetchFFmpeg } from "../lib/ffmpeg-processor"
 import "../styles.css"
@@ -52,7 +51,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<div className="flex flex-col min-h-screen">
 					<Header />
 					<div className="flex-1">{children}</div>
-					<Footer />
 				</div>
 				<Scripts />
 			</body>

@@ -4,11 +4,13 @@ import type { ProcessedFile } from "../lib/image-processor"
 import { createZip } from "../lib/file-processor"
 import FileDropzone from "./FileDropzone"
 import { lazy, Suspense } from "react"
+import Icon from "./Icon"
 
 const CollagePanel = lazy(() => import("./CollagePanel"))
 
 interface ToolPanelProps {
 	tool: ToolDefinition
+	presetDefaults?: Record<string, unknown>
 }
 
 /** Format seconds to HH:MM:SS */
@@ -19,15 +21,21 @@ function formatTime(seconds: number): string {
 	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
 }
 
-function RemoveButton({ onClick }: { onClick: () => void }) {
+function RemoveButton({
+	onClick,
+	label = "Remove file",
+}: {
+	onClick: () => void
+	label?: string
+}) {
 	return (
 		<button
 			type="button"
 			className="btn btn-ghost btn-xs btn-circle absolute top-1 right-1 bg-base-300/80 hover:bg-error hover:text-white z-10"
 			onClick={onClick}
-			aria-label="Remove file"
+			aria-label={label}
 		>
-			✕
+			<Icon name="close" size={14} />
 		</button>
 	)
 }
@@ -255,7 +263,7 @@ function PdfPagePreview({
 
 	return (
 		<div className="rounded-lg border border-base-content/10 overflow-hidden relative">
-			{onRemove && <RemoveButton onClick={onRemove} />}
+			{onRemove && <RemoveButton onClick={onRemove} label="Remove page" />}
 			{imgUrl ? (
 				<img
 					src={imgUrl}
@@ -356,7 +364,7 @@ function PdfAllPagesPreview({
 								onClick={() => handleMoveUp(idx)}
 								disabled={idx === 0}
 							>
-								&#8593;
+								<Icon name="up" size={14} />
 							</button>
 							<button
 								type="button"
@@ -364,12 +372,166 @@ function PdfAllPagesPreview({
 								onClick={() => handleMoveDown(idx)}
 								disabled={idx === pageOrder.length - 1}
 							>
-								&#8595;
+								<Icon name="down" size={14} />
 							</button>
 						</div>
 					)}
 				</div>
 			))}
+		</div>
+	)
+}
+
+// -- Video Crop Preview --
+
+function VideoCropPreview({
+	file,
+	x,
+	y,
+	cropWidth,
+	cropHeight,
+	onCropChange,
+	onRemove,
+}: {
+	file: File
+	x: number
+	y: number
+	cropWidth: number
+	cropHeight: number
+	onCropChange: (crop: {
+		x: number
+		y: number
+		cropWidth: number
+		cropHeight: number
+	}) => void
+	onRemove?: () => void
+}) {
+	const videoRef = useRef<HTMLVideoElement>(null)
+	const [url, setUrl] = useState<string | null>(null)
+	useEffect(() => {
+		const u = URL.createObjectURL(file)
+		setUrl(u)
+		return () => URL.revokeObjectURL(u)
+	}, [file])
+	const containerRef = useRef<HTMLDivElement>(null)
+	const [vidSize, setVidSize] = useState({ w: 0, h: 0 })
+	const [dragging, setDragging] = useState(false)
+	const [resizing, setResizing] = useState(false)
+	const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 })
+	const resizeStart = useRef({ x: 0, y: 0, ow: 0, oh: 0 })
+
+	const handleVidLoad = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+		setVidSize({
+			w: e.currentTarget.videoWidth,
+			h: e.currentTarget.videoHeight,
+		})
+	}
+
+	const containerWidth = containerRef.current?.clientWidth || 400
+	const scale = vidSize.w > 0 ? containerWidth / vidSize.w : 1
+
+	const handleMouseDown = (e: React.MouseEvent) => {
+		setDragging(true)
+		dragStart.current = { x: e.clientX, y: e.clientY, ox: x, oy: y }
+	}
+
+	useEffect(() => {
+		if (!dragging) return
+		const handleMove = (e: MouseEvent) => {
+			const dx = (e.clientX - dragStart.current.x) / scale
+			const dy = (e.clientY - dragStart.current.y) / scale
+			onCropChange({
+				x: Math.max(0, Math.round(dragStart.current.ox + dx)),
+				y: Math.max(0, Math.round(dragStart.current.oy + dy)),
+				cropWidth,
+				cropHeight,
+			})
+		}
+		const handleUp = () => setDragging(false)
+		window.addEventListener("mousemove", handleMove)
+		window.addEventListener("mouseup", handleUp)
+		return () => {
+			window.removeEventListener("mousemove", handleMove)
+			window.removeEventListener("mouseup", handleUp)
+		}
+	}, [dragging, scale, cropWidth, cropHeight, onCropChange])
+
+	useEffect(() => {
+		if (!resizing) return
+		const handleResizeMove = (e: MouseEvent) => {
+			const dx = (e.clientX - resizeStart.current.x) / scale
+			const dy = (e.clientY - resizeStart.current.y) / scale
+			onCropChange({
+				x,
+				y,
+				cropWidth: Math.max(10, Math.round(resizeStart.current.ow + dx)),
+				cropHeight: Math.max(10, Math.round(resizeStart.current.oh + dy)),
+			})
+		}
+		const handleResizeUp = () => setResizing(false)
+		window.addEventListener("mousemove", handleResizeMove)
+		window.addEventListener("mouseup", handleResizeUp)
+		return () => {
+			window.removeEventListener("mousemove", handleResizeMove)
+			window.removeEventListener("mouseup", handleResizeUp)
+		}
+	}, [resizing, scale, x, y, onCropChange])
+
+	if (!url) return null
+
+	return (
+		<div className="space-y-3">
+			<div
+				ref={containerRef}
+				className="relative rounded-lg border border-base-content/10 overflow-hidden select-none"
+			>
+				{onRemove && <RemoveButton onClick={onRemove} />}
+				{/* biome-ignore lint/a11y/useMediaCaption: User file */}
+				<video
+					ref={videoRef}
+					src={url}
+					controls
+					className="w-full h-auto"
+					onLoadedMetadata={handleVidLoad}
+				/>
+				{vidSize.w > 0 && (
+					// biome-ignore lint/a11y/useSemanticElements: Crop drag handle
+					<div
+						role="button"
+						tabIndex={0}
+						className="absolute border-2 border-primary bg-primary/10 cursor-move"
+						style={{
+							left: x * scale,
+							top: y * scale,
+							width: Math.min(cropWidth, vidSize.w - x) * scale,
+							height: Math.min(cropHeight, vidSize.h - y) * scale,
+						}}
+						onMouseDown={handleMouseDown}
+						onKeyDown={() => {}}
+					>
+						{/* biome-ignore lint/a11y/useSemanticElements: Crop resize handle */}
+						<div
+							role="button"
+							tabIndex={0}
+							className="absolute -right-2 -bottom-2 w-4 h-4 bg-primary border-2 border-base-100/50 rounded-full cursor-se-resize shadow-md"
+							onMouseDown={(e) => {
+								e.stopPropagation()
+								setResizing(true)
+								resizeStart.current = {
+									x: e.clientX,
+									y: e.clientY,
+									ow: cropWidth,
+									oh: cropHeight,
+								}
+							}}
+							onKeyDown={() => {}}
+						/>
+					</div>
+				)}
+			</div>
+			<p className="text-xs text-base-content/50 text-center">
+				Drag to reposition. Drag the bottom-right corner to resize.
+			</p>
 		</div>
 	)
 }
@@ -659,7 +821,7 @@ function DocxPreview({ blob, name }: { blob: Blob; name: string }) {
 function isImage(file: File) {
 	return (
 		file.type.startsWith("image/") ||
-		/\.(png|jpe?g|webp|avif|bmp|gif)$/i.test(file.name)
+		/\.(png|jpe?g|webp|avif|bmp|gif|ico)$/i.test(file.name)
 	)
 }
 function isPdf(file: File) {
@@ -678,7 +840,7 @@ function isAudio(file: File) {
 
 // -- Main --
 
-export default function ToolPanel({ tool }: ToolPanelProps) {
+export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [files, setFiles] = useState<File[]>([])
 	const [options, setOptions] = useState<Record<string, unknown>>(() => {
@@ -686,7 +848,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 		for (const opt of tool.options) {
 			if (opt.default !== undefined) defaults[opt.id] = opt.default
 		}
-		return defaults
+		return { ...defaults, ...(presetDefaults || {}) }
 	})
 	const [isProcessing, setIsProcessing] = useState(false)
 	const [results, setResults] = useState<ProcessedFile[] | null>(null)
@@ -836,22 +998,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 										onClick={handleAddMoreClick}
 										title="Add more files"
 									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="14"
-											height="14"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="3"
-											strokeLinecap="round"
-											strokeLinejoin="round"
-											aria-label="Plus icon"
-											role="img"
-										>
-											<line x1="12" y1="5" x2="12" y2="19" />
-											<line x1="5" y1="12" x2="19" y2="12" />
-										</svg>
+										<Icon name="plus" />
 									</button>
 								)}
 							</div>
@@ -949,23 +1096,36 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 									<div className="flex flex-col gap-3 mb-3">
 										{files.map((f, i) =>
 											isVideo(f) ? (
-												<VideoPreview
-													key={`vid-${f.name}-${i}`}
-													file={f}
-													onRemove={() => removeFile(i)}
-													onSetStart={
-														tool.id === "video-trim"
-															? (time) =>
-																	setOptions((p) => ({ ...p, start: time }))
-															: undefined
-													}
-													onSetEnd={
-														tool.id === "video-trim"
-															? (time) =>
-																	setOptions((p) => ({ ...p, end: time }))
-															: undefined
-													}
-												/>
+												tool.id === "video-crop" ? (
+													<VideoCropPreview
+														key={`vid-crop-${f.name}-${i}`}
+														file={f}
+														x={Number(options.x ?? 0)}
+														y={Number(options.y ?? 0)}
+														cropWidth={Number(options.cropWidth ?? 400)}
+														cropHeight={Number(options.cropHeight ?? 400)}
+														onCropChange={handleCropChange}
+														onRemove={() => removeFile(i)}
+													/>
+												) : (
+													<VideoPreview
+														key={`vid-${f.name}-${i}`}
+														file={f}
+														onRemove={() => removeFile(i)}
+														onSetStart={
+															tool.id === "video-trim"
+																? (time) =>
+																		setOptions((p) => ({ ...p, start: time }))
+																: undefined
+														}
+														onSetEnd={
+															tool.id === "video-trim"
+																? (time) =>
+																		setOptions((p) => ({ ...p, end: time }))
+																: undefined
+														}
+													/>
+												)
 											) : null,
 										)}
 									</div>
@@ -1135,6 +1295,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 						className={`btn btn-primary btn-lg ${isProcessing ? "btn-disabled" : ""}`}
 						onClick={handleRun}
 						disabled={isProcessing}
+						data-testid="run-button"
 					>
 						{isProcessing ? (
 							<>
@@ -1169,7 +1330,10 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 
 			{/* Results */}
 			{results && results.length > 0 && (
-				<div className="card bg-base-100 border border-success/30">
+				<div
+					className="card bg-base-100 border border-success/30"
+					data-testid="result-card"
+				>
 					<div className="card-body p-4">
 						<div className="flex items-center justify-between mb-3">
 							<h4 className="font-semibold text-sm text-success flex items-center gap-2">
@@ -1214,7 +1378,10 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 
 						{/* Image previews in results */}
 						{results.some((r) => r.blob.type.startsWith("image/")) && (
-							<div className="mt-4 grid gap-3 grid-cols-2 sm:grid-cols-3">
+							<div
+								className="mt-4 grid gap-3 grid-cols-2 sm:grid-cols-3"
+								data-testid="preview"
+							>
 								{results.map((r, i) => {
 									if (!r.blob.type.startsWith("image/")) return null
 									const u = URL.createObjectURL(r.blob)
@@ -1236,7 +1403,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 
 						{/* Video previews in results */}
 						{results.some((r) => r.blob.type.startsWith("video/")) && (
-							<div className="mt-4 flex flex-col gap-3">
+							<div className="mt-4 flex flex-col gap-3" data-testid="preview">
 								{results.map((r, i) => {
 									if (!r.blob.type.startsWith("video/")) return null
 									const u = URL.createObjectURL(r.blob)
@@ -1255,7 +1422,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 
 						{/* Audio previews in results */}
 						{results.some((r) => r.blob.type.startsWith("audio/")) && (
-							<div className="mt-4 flex flex-col gap-3">
+							<div className="mt-4 flex flex-col gap-3" data-testid="preview">
 								{results.map((r, i) => {
 									if (!r.blob.type.startsWith("audio/")) return null
 									const u = URL.createObjectURL(r.blob)
@@ -1280,7 +1447,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 								r.name.endsWith(".txt") ||
 								r.name.endsWith(".json"),
 						) && (
-							<div className="mt-4 flex flex-col gap-3">
+							<div className="mt-4 flex flex-col gap-3" data-testid="preview">
 								{results.map((r, i) => {
 									if (
 										r.blob.type !== "text/plain" &&
@@ -1308,7 +1475,7 @@ export default function ToolPanel({ tool }: ToolPanelProps) {
 								(r.name.toLowerCase().endsWith(".pdf") &&
 									tool.id === "document-viewer"),
 						) && (
-							<div className="mt-4 flex flex-col gap-4">
+							<div className="mt-4 flex flex-col gap-4" data-testid="preview">
 								{results.map((r, i) => {
 									// DOCX files → docx-preview rendering
 									if (r.name.endsWith(".docx")) {

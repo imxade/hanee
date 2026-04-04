@@ -1,15 +1,23 @@
-import { useState, useMemo, useId } from "react"
+import { useMemo } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import { z } from "zod"
 import { getAllTools, getCategories } from "../lib/tool-registry"
 import ToolCard from "../components/ToolCard"
+import Icon from "../components/Icon"
 
-export const Route = createFileRoute("/")({ component: HomePage })
+const searchSchema = z.object({
+	q: z.string().optional().catch(""),
+})
+
+export const Route = createFileRoute("/")({
+	validateSearch: (search) => searchSchema.parse(search),
+	component: HomePage,
+})
 
 function HomePage() {
+	const { q: query = "" } = Route.useSearch()
 	const categories = getCategories()
 	const allTools = getAllTools()
-	const [query, setQuery] = useState("")
-	const searchInputId = useId()
 
 	const filteredTools = useMemo(() => {
 		const q = query.toLowerCase().trim()
@@ -26,7 +34,7 @@ function HomePage() {
 	return (
 		<main className="max-w-6xl mx-auto px-4 pb-12 pt-8">
 			{/* Hero */}
-			<section className="text-center mb-8">
+			<section className="text-center mb-12">
 				<h1 className="text-4xl sm:text-5xl font-extrabold text-base-content mb-4">
 					Your files, your browser.
 				</h1>
@@ -36,50 +44,12 @@ function HomePage() {
 				</p>
 			</section>
 
-			{/* Search */}
-			<div className="flex justify-center mb-10">
-				<label className="input input-bordered flex items-center gap-2 w-full max-w-md">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 16 16"
-						fill="currentColor"
-						className="w-4 h-4 opacity-50"
-						aria-label="Search icon"
-						role="img"
-					>
-						<path
-							fillRule="evenodd"
-							d="M9.965 11.026a5 5 0 1 1 1.06-1.06l2.755 2.754a.75.75 0 1 1-1.06 1.06l-2.755-2.754ZM10.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z"
-							clipRule="evenodd"
-						/>
-					</svg>
-					<input
-						type="text"
-						className="grow"
-						placeholder="Search tools... (e.g. rotate, pdf, mp4)"
-						value={query}
-						onChange={(e) => setQuery(e.target.value)}
-						id={searchInputId}
-					/>
-					{query && (
-						<button
-							type="button"
-							className="btn btn-ghost btn-xs btn-circle"
-							onClick={() => setQuery("")}
-							aria-label="Clear search"
-						>
-							✕
-						</button>
-					)}
-				</label>
-			</div>
-
 			{/* Filtered results */}
 			{filteredTools !== null ? (
 				filteredTools.length === 0 ? (
-					<div className="text-center py-12 text-base-content/50">
-						<div className="text-4xl mb-3">🔍</div>
-						<p>No tools found for "{query}"</p>
+					<div className="text-center py-12 text-base-content/30 flex flex-col items-center">
+						<Icon name="search" size={64} strokeWidth={1} className="mb-4" />
+						<p className="text-lg">No tools found for "{query}"</p>
 					</div>
 				) : (
 					<section className="mb-10">
@@ -102,7 +72,6 @@ function HomePage() {
 					return (
 						<section key={cat.id} className="mb-10">
 							<h2 className="text-xl font-bold text-base-content mb-4 flex items-center gap-2">
-								<span>{cat.icon}</span>
 								{cat.label}
 							</h2>
 							<div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">

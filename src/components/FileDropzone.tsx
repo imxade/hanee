@@ -1,4 +1,5 @@
 import { useCallback, useState, useRef } from "react"
+import Icon from "./Icon"
 
 interface FileDropzoneProps {
 	acceptedExtensions: string[]
@@ -86,7 +87,9 @@ export default function FileDropzone({
 					: "border-base-content/20 bg-base-200/50 hover:border-primary/50 hover:bg-base-200"
 			}`}
 		>
-			<div className="text-5xl mb-4">📂</div>
+			<div className="text-base-content/20 mb-6 group-hover:text-primary/40 transition-colors">
+				<Icon name="folder" size={64} strokeWidth={1} />
+			</div>
 			<p className="text-lg font-semibold text-base-content">
 				{isDragging ? "Drop files here" : "Drag & drop files here"}
 			</p>
@@ -103,6 +106,7 @@ export default function FileDropzone({
 				accept={acceptStr}
 				multiple={multiple}
 				onChange={handleChange}
+				data-testid="file-input"
 			/>
 		</div>
 	)

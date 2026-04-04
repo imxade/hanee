@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { IconSun, IconMoon } from "@tabler/icons-react"
 
 const THEMES = ["dracula", "cupcake"] as const
 type Theme = (typeof THEMES)[number]
@@ -34,7 +35,7 @@ export default function ThemeToggle() {
 			aria-label={`Switch to ${theme === "dracula" ? "light" : "dark"} mode`}
 			title={`Current: ${theme}. Click to switch.`}
 		>
-			{theme === "dracula" ? "🌙" : "☀️"}
+			{theme === "dracula" ? <IconMoon size={20} /> : <IconSun size={20} />}
 		</button>
 	)
 }

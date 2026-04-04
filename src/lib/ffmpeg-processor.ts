@@ -3,7 +3,7 @@
 // We load the WASM core lazily on first use and cache it.
 
 import { FFmpeg } from "@ffmpeg/ffmpeg"
-import { fetchFile, toBlobURL } from "@ffmpeg/util"
+import { fetchFile } from "@ffmpeg/util"
 import type { ProcessedFile } from "./image-processor"
 
 let ffmpeg: FFmpeg | null = null
@@ -16,12 +16,10 @@ async function getFFmpeg(): Promise<FFmpeg> {
 		ffmpeg = new FFmpeg()
 		ffmpeg.on("log", ({ message }) => console.log("[ffmpeg]", message))
 		loadPromise = (async () => {
+			const baseURL = `${window.location.origin}/ffmpeg`
 			await ffmpeg?.load({
-				coreURL: await toBlobURL("/ffmpeg/ffmpeg-core.js", "text/javascript"),
-				wasmURL: await toBlobURL(
-					"/ffmpeg/ffmpeg-core.wasm",
-					"application/wasm",
-				),
+				coreURL: `${baseURL}/ffmpeg-core.js`,
+				wasmURL: `${baseURL}/ffmpeg-core.wasm`,
 			})
 		})()
 	}

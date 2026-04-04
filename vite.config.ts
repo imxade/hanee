@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type ViteDevServer, type PreviewServer } from "vite"
 import { devtools } from "@tanstack/devtools-vite"
 import tsconfigPaths from "vite-tsconfig-paths"
@@ -6,6 +7,18 @@ import viteReact from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
+let ffmpegCoreVersion = "unknown"
+try {
+	const pkg = JSON.parse(
+		readFileSync(resolve("node_modules/@ffmpeg/core/package.json"), "utf8"),
+	)
+	ffmpegCoreVersion = pkg.version
+} catch (_e) {
+	console.warn("Failed to read @ffmpeg/core version")
+}
 
 function coopCoepMiddleware() {
 	return {
@@ -44,7 +57,6 @@ export default defineConfig({
 
 	plugins: [
 		devtools(),
-
 		coopCoepMiddleware(),
 
 		nitro({
@@ -81,7 +93,17 @@ export default defineConfig({
 			swDest: "sw.js",
 			globPatterns: ["**/*"],
 			globDirectory: ".output/public",
-			additionalPrecacheEntries: [{ url: "/", revision: String(Date.now()) }],
+			additionalPrecacheEntries: [
+				{ url: "/", revision: String(Date.now()) },
+				{
+					url: "/ffmpeg/ffmpeg-core.js",
+					revision: `core-${ffmpegCoreVersion}`,
+				},
+				{
+					url: "/ffmpeg/ffmpeg-core.wasm",
+					revision: `core-${ffmpegCoreVersion}`,
+				},
+			],
 			injectionPoint: "self.__WB_MANIFEST",
 			rollupFormat: "iife",
 			devOptions: {
@@ -90,4 +112,8 @@ export default defineConfig({
 			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB
 		}),
 	],
+
+	test: {
+		exclude: ["tests/e2e/**", "node_modules/**"],
+	},
 })
