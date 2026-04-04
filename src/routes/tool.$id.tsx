@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { getToolById } from "../lib/tool-registry"
 import ToolPanel from "../components/ToolPanel"
+import Icon from "../components/Icon"
 
 export const Route = createFileRoute("/tool/$id")({
 	component: ToolPage,
@@ -13,7 +14,12 @@ function ToolPage() {
 	if (!tool) {
 		return (
 			<main className="max-w-3xl mx-auto px-4 py-16 text-center">
-				<div className="text-6xl mb-4">🔍</div>
+				<Icon
+					name="search"
+					size={64}
+					strokeWidth={1}
+					className="mx-auto mb-4 opacity-20"
+				/>
 				<h1 className="text-2xl font-bold text-base-content mb-2">
 					Tool not found
 				</h1>
@@ -41,7 +47,6 @@ function ToolPage() {
 
 			{/* Tool header */}
 			<div className="flex items-center gap-4 mb-8">
-				{/* <span className="text-4xl">{tool.icon}</span> */}
 				<div>
 					<h1 className="text-2xl font-bold text-base-content">{tool.name}</h1>
 					<p className="text-base-content/60">{tool.description}</p>
