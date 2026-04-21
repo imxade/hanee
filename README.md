@@ -67,10 +67,10 @@ sequenceDiagram
 
 All heavy media processing operations (Video, Audio, GIF) leverage WebAssembly (WASM) binaries executing strictly within the client sandbox. The application architecture establishes isolated Background Web Workers to prevent completely blocking the main UI JavaScript thread during mathematically intensive transcodings.
 
-* **Virtual File System (VFS)**: When a tool process fires, the native `File` binary object is converted into an `ArrayBuffer` and mounted directly into the FFmpeg WASM internal VFS. The execution runs precisely as an isolated terminal binary (`ff.exec`). 
-* **Worker Execution**: The FFmpeg core runs on its own dedicated thread, fetching `ffmpeg-core.wasm` asynchronously upon the first interaction. 
-* **Ephemeral Memory Allocation**: As soon as the `outputName` buffer is intercepted from the VFS and cast back into a Blob, all trace targets (temporary `.mp4` payloads etc.) are immediately flushed via `ff.deleteFile()` to drastically preserve memory limitations and bypass manual streaming wipes.
-* **Security Constraints**: WASM relies critically upon `SharedArrayBuffer` mapping, mandating server execution with `COOP: same-origin` and `COEP: require-corp` headers.
+- **Virtual File System (VFS)**: When a tool process fires, the native `File` binary object is converted into an `ArrayBuffer` and mounted directly into the FFmpeg WASM internal VFS. The execution runs precisely as an isolated terminal binary (`ff.exec`).
+- **Worker Execution**: The FFmpeg core runs on its own dedicated thread, fetching `ffmpeg-core.wasm` asynchronously upon the first interaction.
+- **Ephemeral Memory Allocation**: As soon as the `outputName` buffer is intercepted from the VFS and cast back into a Blob, all trace targets (temporary `.mp4` payloads etc.) are immediately flushed via `ff.deleteFile()` to drastically preserve memory limitations and bypass manual streaming wipes.
+- **Security Constraints**: WASM relies critically upon `SharedArrayBuffer` mapping, mandating server execution with `COOP: same-origin` and `COEP: require-corp` headers.
 
 ---
 
@@ -88,12 +88,12 @@ A static array of tool definitions. Each tool specifies its ID, name, category, 
 **Processor Functions** (`src/lib/*-processor.ts`)
 Stateless async functions that perform the actual file processing:
 
-* `image-processor.ts`; uses the Canvas API (`OffscreenCanvas`) for **Convert**, **Resize**, **Compress**, **Rotate**, **Crop**, **Upscale**, **Blur**, **Pixelate**, and **Watermark** (Text Overlay), and `imagetracerjs` for raster-to-SVG vectorization.
-* `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, and **Rotate**, and `pdfjs-dist` for rendering/text extraction.
-* `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, and native handlers for **CSV ↔ JSON** conversion and **JSON Formatting**.
-* `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
-* Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
-* `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
+- `image-processor.ts`; uses the Canvas API (`OffscreenCanvas`) for **Convert**, **Resize**, **Compress**, **Rotate**, **Crop**, **Upscale**, **Blur**, **Pixelate**, and **Watermark** (Text Overlay), and `imagetracerjs` for raster-to-SVG vectorization.
+- `pdf-processor.ts`; uses `pdf-lib` for **Merge**, **Split**, **Delete Pages**, **Reorder**, **Images to PDF**, **Compress**, **Watermark**, and **Rotate**, and `pdfjs-dist` for rendering/text extraction.
+- `file-processor.ts`; uses `fflate` for **ZIP creation** and **Extraction**, and native handlers for **CSV ↔ JSON** conversion and **JSON Formatting**.
+- `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
+- Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
+- `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
 
 ---
 
@@ -107,7 +107,6 @@ When a user drops files and clicks run:
 4. The processor function (e.g. `convertImage`) processes each file and returns `ProcessedFile[]`.
 5. Results are rendered in the UI with file sizes, previews (for images), and a "Download" button.
 6. On download, `URL.createObjectURL(blob)` creates a temporary URL and a hidden `<a>` element triggers the browser's native download.
-
 
 ---
 
@@ -214,29 +213,27 @@ Special tool UIs: `image-crop` shows drag-to-crop overlay, `image-rotate` shows 
 ---
 
 ## 2. PWA & Offline Support
-The application uses Vite-PWA with standard Service Workers to ensure the tools can be safely installed as a desktop or mobile application. Once initialized, the full FFmpeg WASM bundle and required visual libraries are durably cached locally, enabling unlimited airplane-mode file processing at peak hardware performance.
 
+The application uses Vite-PWA with standard Service Workers to ensure the tools can be safely installed as a desktop or mobile application. Once initialized, the full FFmpeg WASM bundle and required visual libraries are durably cached locally, enabling unlimited airplane-mode file processing at peak hardware performance.
 
 ---
 
 ## Performance Strategy
 
-* Image processing uses the browser's native Canvas API; no WASM overhead for basic operations
-* PDF operations use pdf-lib which is pure JavaScript; fast for document manipulation
-* ZIP compression uses fflate which is optimized for browser environments
-* File data stays as native `File` / `Blob` objects; no unnecessary `ArrayBuffer` conversions
-* The initial JS bundle is kept minimal; processor modules are tree-shaken by Vite
-* FFmpeg.wasm automatically manages its own internal Web Worker, avoiding main-thread blocking for heavy media processing
+- Image processing uses the browser's native Canvas API; no WASM overhead for basic operations
+- PDF operations use pdf-lib which is pure JavaScript; fast for document manipulation
+- ZIP compression uses fflate which is optimized for browser environments
+- File data stays as native `File` / `Blob` objects; no unnecessary `ArrayBuffer` conversions
+- The initial JS bundle is kept minimal; processor modules are tree-shaken by Vite
+- FFmpeg.wasm automatically manages its own internal Web Worker, avoiding main-thread blocking for heavy media processing
 
 ---
 
-
 ## Limitations
 
-* Large files may hit browser memory limits; there is no streaming to disk
-* Some advanced conversions require codecs not available in WASM builds
-* Safari has limited WASM thread support; single-threaded fallback may be required
-
+- Large files may hit browser memory limits; there is no streaming to disk
+- Some advanced conversions require codecs not available in WASM builds
+- Safari has limited WASM thread support; single-threaded fallback may be required
 
 ---
 
@@ -246,24 +243,24 @@ The application uses Vite-PWA with standard Service Workers to ensure the tools 
 
 ### Environment
 
-* Use `nix-shell` to access `node` (v24+) and `npm`. All commands must be run inside `nix-shell` or prefixed with `nix-shell --run "..."` .
-* After `npm install`, the `postinstall` script copies FFmpeg WASM files to `public/ffmpeg/`.
-* The dev server runs on port 3000: `nix-shell --run "npm run dev"`
-* Production build: `nix-shell --run "npm run build"` then preview with `nix-shell --run "npm run preview"`
+- Use `nix-shell` to access `node` (v24+) and `npm`. All commands must be run inside `nix-shell` or prefixed with `nix-shell --run "..."` .
+- After `npm install`, the `postinstall` script copies FFmpeg WASM files to `public/ffmpeg/`.
+- The dev server runs on port 3000: `nix-shell --run "npm run dev"`
+- Production build: `nix-shell --run "npm run build"` then preview with `nix-shell --run "npm run preview"`
 
 ### Development Rules
 
-* **README accuracy**: Update this README with every change. Keep architecture diagrams accurate.
-* **Browser testing**: Test on the **production build** (`npm run preview`), for all tools end to end. The COOP/COEP headers and service worker behavior differ.
-* **DaisyUI only**: All UI must use DaisyUI component classes. Raw Tailwind only for layout (flex, grid, gap, padding, margin). No custom CSS files.
-* **Tool Registry pattern**: Tools live as objects in `tool-registry.ts`. Each has a `process(files, options) → ProcessedFile[]` function. Do not create per-tool route files or per-tool components.
-* **Processor pattern**: Processor functions are stateless async in `src/lib/*-processor.ts`. Use `batch()` helper for multi-file iteration.
-* **File objects**: Keep data as native `File` / `Blob`. Only convert to `ArrayBuffer` when a library demands it.
-* **No backend**: No server routes, API calls, or backend deps. Everything is client-side.
-* **No custom SW**: Serwist handles offline caching. Never add custom service worker logic.
-* **Tests**: Run `nix-shell --run "npx vitest run"` — all must pass. Add tests for new tools/processors.
-* **Linting**: Run `nix-shell --run "npx biome check"` — must pass. Auto-fix with `npx biome check --write`.
-* **Build**: Run `nix-shell --run "npm run build"` — must succeed before considering work done.
+- **README accuracy**: Update this README with every change. Keep architecture diagrams accurate.
+- **Browser testing**: Test on the **production build** (`npm run preview`), for all tools end to end. The COOP/COEP headers and service worker behavior differ.
+- **DaisyUI only**: All UI must use DaisyUI component classes. Raw Tailwind only for layout (flex, grid, gap, padding, margin). No custom CSS files.
+- **Tool Registry pattern**: Tools live as objects in `tool-registry.ts`. Each has a `process(files, options) → ProcessedFile[]` function. Do not create per-tool route files or per-tool components.
+- **Processor pattern**: Processor functions are stateless async in `src/lib/*-processor.ts`. Use `batch()` helper for multi-file iteration.
+- **File objects**: Keep data as native `File` / `Blob`. Only convert to `ArrayBuffer` when a library demands it.
+- **No backend**: No server routes, API calls, or backend deps. Everything is client-side.
+- **No custom SW**: Serwist handles offline caching. Never add custom service worker logic.
+- **Tests**: Run `nix-shell --run "npx vitest run"` — all must pass. Add tests for new tools/processors.
+- **Linting**: Run `nix-shell --run "npx biome check"` — must pass. Auto-fix with `npx biome check --write`.
+- **Build**: Run `nix-shell --run "npm run build"` — must succeed before considering work done.
 
 ### How to Add a New Tool
 
@@ -274,20 +271,20 @@ The application uses Vite-PWA with standard Service Workers to ensure the tools 
 
 ### Common Pitfalls
 
-* `Uint8Array<ArrayBufferLike>` from pdf-lib/fflate is not a valid `BlobPart` in TS6. Always `.slice()` before wrapping in `new Blob()`.
-* FFmpeg.wasm requires `SharedArrayBuffer`, which needs COOP/COEP headers. These are set in `vite.config.ts` and `vercel.json`, similarly needed to be handled by other hosting providers.
-* The `acceptedExtensions` array must contain only strings starting with `.` or the wildcard `*`. MIME types go in `FileDropzone`'s accept attribute logic, not here.
-* Document viewer auto-triggers on file drop (no Run button). This is handled by the `useEffect` in `ToolPanel` that watches `tool.id === 'document-viewer'`.
-* biome enforces tab indentation, double quotes, and no semicolons. Run `npx biome check --write` to auto-fix.
+- `Uint8Array<ArrayBufferLike>` from pdf-lib/fflate is not a valid `BlobPart` in TS6. Always `.slice()` before wrapping in `new Blob()`.
+- FFmpeg.wasm requires `SharedArrayBuffer`, which needs COOP/COEP headers. These are set in `vite.config.ts` and `vercel.json`, similarly needed to be handled by other hosting providers.
+- The `acceptedExtensions` array must contain only strings starting with `.` or the wildcard `*`. MIME types go in `FileDropzone`'s accept attribute logic, not here.
+- Document viewer auto-triggers on file drop (no Run button). This is handled by the `useEffect` in `ToolPanel` that watches `tool.id === 'document-viewer'`.
+- biome enforces tab indentation, double quotes, and no semicolons. Run `npx biome check --write` to auto-fix.
 
 ## Search
 
 The homepage search uses intent-aware scored ranking:
 
-* **Conversion queries**: `jpg to png` matches tools that accept the source extension and produce the target format
-* **Synonym expansion**: Common aliases (e.g. `shrink` → `compress`, `combine` → `merge`) automatically expand the query
-* **Ranked scoring**: Results are sorted by relevance — exact name matches score highest, followed by ID, description, category, and extension matches
-* **Rich results**: Search results show tool descriptions alongside names for easier identification
+- **Conversion queries**: `jpg to png` matches tools that accept the source extension and produce the target format
+- **Synonym expansion**: Common aliases (e.g. `shrink` → `compress`, `combine` → `merge`) automatically expand the query
+- **Ranked scoring**: Results are sorted by relevance — exact name matches score highest, followed by ID, description, category, and extension matches
+- **Rich results**: Search results show tool descriptions alongside names for easier identification
 
 ---
 
@@ -299,7 +296,7 @@ After test completion, the dedicated `concat-videos.ts` Node daemon scans the is
 
 ```yaml
 # Simplified Flow
-[ GitHub Action ] 
+[ GitHub Action ]
   |-- Web Server Startup (Vite preview port 3000)
   |-- Asset Generation (download-samples.ts)
   |-- Execute Playwright test loop over Tool Registry
@@ -314,12 +311,22 @@ After test completion, the dedicated `concat-videos.ts` Node daemon scans the is
 
 The UI exposes these `data-testid` attributes for E2E tests:
 
-* `file-input` — hidden file input in `FileDropzone`
-* `run-button` — the Run button in `ToolPanel`
-* `result-card` — the results container
-* `preview` — result preview sections (image/video/audio/text/doc)
+- `file-input` — hidden file input in `FileDropzone`
+- `run-button` — the Run button in `ToolPanel`
+- `result-card` — the results container
+- `preview` — result preview sections (image/video/audio/text/doc)
 
 ### ToolCard SEO
 
 Each `ToolCard` includes a `sr-only` div with the tool's description and accepted extensions, exposing metadata to search engines and screen readers without affecting the visual layout.
 
+# ToDo
+
+- recording tools
+  - screen recoding on desktop using navigator
+  - for both mobile and desktop
+    - camera + mic
+    - audio record
+- todo list using localStorage() as well as option to download and upload the list, on upload the list in localstorage will get appended not overriden
+- check if something else obvious could be added
+- then update the readme, note that all fetures should be reflected here, and if the readme is feeded to an llm it shoould be able to answer all the question in detail low level manner for both end user as well as developers
