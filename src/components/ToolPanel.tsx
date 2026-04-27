@@ -5,6 +5,8 @@ import { createZip } from "../lib/file-processor"
 import FileDropzone from "./FileDropzone"
 import { lazy, Suspense } from "react"
 import Icon from "./Icon"
+import RecorderPanel from "./RecorderPanel"
+import TodoListPanel from "./TodoListPanel"
 
 const CollagePanel = lazy(() => import("./CollagePanel"))
 
@@ -841,6 +843,8 @@ function isAudio(file: File) {
 // -- Main --
 
 export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
+	const uiMode = tool.uiMode ?? "standard"
+	const requiresFiles = tool.requiresFiles ?? true
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [files, setFiles] = useState<File[]>([])
 	const [options, setOptions] = useState<Record<string, unknown>>(() => {
@@ -881,7 +885,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 
 	useEffect(() => {
 		let cancelled = false
-		if (tool.id === "document-viewer" && files.length > 0) {
+		if (uiMode === "auto-process" && files.length > 0) {
 			const run = async () => {
 				setIsProcessing(true)
 				setError(null)
@@ -901,7 +905,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 		return () => {
 			cancelled = true
 		}
-	}, [files, tool, options])
+	}, [files, tool, options, uiMode])
 
 	const handleRun = async () => {
 		if (files.length === 0) return
@@ -972,18 +976,24 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 
 	const isPdfPageTool =
 		tool.id === "pdf-delete-pages" || tool.id === "pdf-reorder"
+	const recorderKind =
+		tool.id === "audio-recorder"
+			? "audio"
+			: tool.id === "camera-recorder"
+				? "camera"
+				: "screen"
 
 	return (
 		<div className="flex flex-col gap-6">
 			{/* File input */}
-			{files.length === 0 ? (
+			{requiresFiles && files.length === 0 ? (
 				<FileDropzone
 					acceptedExtensions={tool.acceptedExtensions}
 					acceptedMimeTypes={[]}
 					multiple={tool.multiple}
 					onFilesSelected={handleFilesSelected}
 				/>
-			) : (
+			) : requiresFiles ? (
 				<div className="card bg-base-100 border border-base-content/10">
 					<div className="card-body p-4">
 						<div className="flex items-center justify-between mb-3">
@@ -1186,7 +1196,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 						)}
 					</div>
 				</div>
-			)}
+			) : null}
 
 			{/* Options */}
 			{tool.options.length > 0 && files.length > 0 && (
@@ -1288,29 +1298,27 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			)}
 
 			{/* Run */}
-			{files.length > 0 &&
-				tool.id !== "document-viewer" &&
-				tool.id !== "image-collage" && (
-					<button
-						type="button"
-						className={`btn btn-primary btn-lg ${isProcessing ? "btn-disabled" : ""}`}
-						onClick={handleRun}
-						disabled={isProcessing}
-						data-testid="run-button"
-					>
-						{isProcessing ? (
-							<>
-								<span className="loading loading-spinner loading-sm" />{" "}
-								Processing...
-							</>
-						) : (
-							`${results ? "Re-run" : "Run"} ${tool.name}`
-						)}
-					</button>
-				)}
+			{uiMode === "standard" && files.length > 0 && (
+				<button
+					type="button"
+					className={`btn btn-primary btn-lg ${isProcessing ? "btn-disabled" : ""}`}
+					onClick={handleRun}
+					disabled={isProcessing}
+					data-testid="run-button"
+				>
+					{isProcessing ? (
+						<>
+							<span className="loading loading-spinner loading-sm" />{" "}
+							Processing...
+						</>
+					) : (
+						`${results ? "Re-run" : "Run"} ${tool.name}`
+					)}
+				</button>
+			)}
 
 			{/* Image Collage */}
-			{tool.id === "image-collage" && files.length > 0 && (
+			{uiMode === "collage" && files.length > 0 && (
 				<Suspense
 					fallback={
 						<div className="flex justify-center p-8">
@@ -1321,6 +1329,16 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 					<CollagePanel files={files} />
 				</Suspense>
 			)}
+
+			{uiMode === "recorder" && (
+				<RecorderPanel
+					kind={recorderKind}
+					onResultsChange={setResults}
+					onErrorChange={setError}
+				/>
+			)}
+
+			{uiMode === "todo" && <TodoListPanel />}
 
 			{/* Error */}
 			{error && (

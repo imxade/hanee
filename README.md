@@ -17,6 +17,7 @@ flowchart TD
     UI["UI Layer<br/>(React + DaisyUI)"] --> Router["Routing Layer<br/>(TanStack Start)"]
     Router --> ToolRoute["/tool/$id Route"]
     ToolRoute --> Registry["Tool Registry<br/>(tool-registry.ts)"]
+    UI --> SearchRank["Search Ranking<br/>(search.ts)"]
     Registry --> Processors["Processor Functions"]
     Processors --> ImgProc["image-processor.ts<br/>(Canvas API + imagetracerjs)"]
     Processors --> PdfProc["pdf-processor.ts<br/>(pdf-lib + pdfjs-dist)"]
@@ -27,6 +28,8 @@ flowchart TD
     DocInline --> xlsxLib["exceljs + papaparse<br/>(XLSX/CSV)"]
     DocInline --> txtJson["Native (TXT/JSON)"]
     UI --> CollageUI["CollagePanel.tsx<br/>(react-konva)"]
+    UI --> RecorderUI["RecorderPanel.tsx<br/>(MediaRecorder + getDisplayMedia/getUserMedia)"]
+    UI --> TodoUI["TodoListPanel.tsx<br/>(localStorage + JSON import/export)"]
 
     style ImgProc fill:#4ecdc4,color:#000
     style PdfProc fill:#ff6b6b,color:#000
@@ -83,7 +86,7 @@ Renders file input, option controls, live preview, progress indicators, and down
 Maps URL routes to tool IDs using TanStack Start. The route `/tool/$id` is a single generic route; there are no per-tool route files. The tool ID from the URL is used to look up the tool definition in the Tool Registry.
 
 **Tool Registry** (`src/lib/tool-registry.ts`)
-A static array of tool definitions. Each tool specifies its ID, name, category, accepted file types, UI options, and a `process` function. The `process` function takes `(files: File[], options)` and returns `ProcessedFile[]`; an array of `{blob, name}` objects. This design means adding a new tool is a single object in one file.
+A static array of tool definitions. Each tool specifies its ID, name, category, accepted file types, UI options, UI mode, search metadata, and a `process` function. The `process` function takes `(files: File[], options)` and returns `ProcessedFile[]`; an array of `{blob, name}` objects. Tools that do not need uploaded files, such as recorders and the todo list, declare `requiresFiles: false` and a custom `uiMode` while still remaining discoverable through the same registry.
 
 **Processor Functions** (`src/lib/*-processor.ts`)
 Stateless async functions that perform the actual file processing:
@@ -94,12 +97,14 @@ Stateless async functions that perform the actual file processing:
 - `ffmpeg-processor.ts`; uses `@ffmpeg/ffmpeg` for Video/Audio **Convert**, **Trim**, **Merge**, **Mute**, **Speed**, **Resize**, **Crop**, **Watermark**, and **Frame Extraction**.
 - Document processing (DOCX via `docx-preview` in UI, XLSX via `exceljs`, CSV via `papaparse`, TXT/JSON inline) is implemented within `tool-registry.ts`.
 - `CollagePanel.tsx`; uses `react-konva` for drag/resize/layer image collage with WASD movement and PNG/JPG export.
+- `RecorderPanel.tsx`; uses `MediaRecorder`, `navigator.mediaDevices.getUserMedia()`, `navigator.mediaDevices.getDisplayMedia()`, canvas compositing, and optional audio mixing to record screen, camera, and microphone input entirely locally.
+- `TodoListPanel.tsx`; uses `localStorage` for persistence and JSON import/export helpers in `todo-list.ts`. Imports always append to the stored list instead of replacing it.
 
 ---
 
 ### Data Flow
 
-When a user drops files and clicks run:
+When a file-based tool runs:
 
 1. The `ToolPanel` component reads the tool definition from the registry via the route's `$id` param.
 2. Files are stored as standard `File` objects (no `ArrayBuffer` conversion needed).
@@ -107,6 +112,13 @@ When a user drops files and clicks run:
 4. The processor function (e.g. `convertImage`) processes each file and returns `ProcessedFile[]`.
 5. Results are rendered in the UI with file sizes, previews (for images), and a "Download" button.
 6. On download, `URL.createObjectURL(blob)` creates a temporary URL and a hidden `<a>` element triggers the browser's native download.
+
+No-file tools follow the same route-level architecture but keep all state in the browser:
+
+1. `screen-recorder`, `camera-recorder`, and `audio-recorder` render `RecorderPanel`.
+2. Capture streams come from browser-native media APIs and never leave the device.
+3. Recorded chunks are accumulated in memory, converted to a Blob, and surfaced through the same generic result card used by file processors.
+4. `todo-list` renders `TodoListPanel`, persists items in `localStorage`, and imports/exports JSON locally without any server round trip.
 
 ---
 
@@ -198,7 +210,9 @@ Document viewer auto-processes on file drop (no "Run" button needed). Results re
 
 ```mermaid
 flowchart TD
-    START["files.length === 0"] -->|true| DROP["FileDropzone"]
+    MODE{"requiresFiles?"} -->|yes| START["files.length === 0"]
+    MODE -->|no| CUSTOM["Custom panel<br/>(Recorder / Todo list)"]
+    START -->|true| DROP["FileDropzone"]
     START -->|false| PREV["Rich file previews<br/>(Image/Video/Audio/PDF)"]
     PREV --> OPTS["Options panel<br/>(select/number/text/file)"]
     OPTS --> RUN["Run button"]
@@ -206,15 +220,22 @@ flowchart TD
     PROC --> RES["Results card"]
     RES --> DL["Download / Download All (ZIP)"]
     RES --> RPREV["Result previews<br/>(Image/Video/Audio/Text/HTML)"]
+    CUSTOM --> RES
 ```
 
-Special tool UIs: `image-crop` shows drag-to-crop overlay, `image-rotate` shows before/after, `pdf-delete-pages` and `pdf-reorder` show all-pages grid with page controls, `image-collage` renders `CollagePanel` with react-konva.
+Special tool UIs: `image-crop` shows drag-to-crop overlay, `image-rotate` shows before/after, `pdf-delete-pages` and `pdf-reorder` show all-pages grid with page controls, `image-collage` renders `CollagePanel` with react-konva, recorder tools render `RecorderPanel`, and `todo-list` renders `TodoListPanel`.
 
 ---
 
 ## 2. PWA & Offline Support
 
 The application uses Vite-PWA with standard Service Workers to ensure the tools can be safely installed as a desktop or mobile application. Once initialized, the full FFmpeg WASM bundle and required visual libraries are durably cached locally, enabling unlimited airplane-mode file processing at peak hardware performance.
+
+New local-first guarantees in this build:
+
+- Recorder tools use browser media APIs only. They do not upload streams or depend on any backend.
+- The todo list is persisted in `localStorage` and its import/export flow is plain local JSON.
+- Search ranking, recorder result assembly, and React Compiler output are all runtime-local and continue to work offline once the app shell has been cached.
 
 ---
 
@@ -315,24 +336,9 @@ The UI exposes these `data-testid` attributes for E2E tests:
 - `run-button` — the Run button in `ToolPanel`
 - `result-card` — the results container
 - `preview` — result preview sections (image/video/audio/text/doc)
+- `recorder-toggle` / `recorder-mounted` — recorder controls and hydration marker
+- `todo-input` / `todo-add` / `todo-import` / `todo-item` / `todo-mounted` — todo list interactions and hydration marker
 
 ### ToolCard SEO
 
 Each `ToolCard` includes a `sr-only` div with the tool's description and accepted extensions, exposing metadata to search engines and screen readers without affecting the visual layout.
-
-# ToDo
-
-- full res recording tools
-  - screen recoding on desktop only using navigator
-    - option to add picture in picture camera and mic to the screen recording.
-    - resize and move the camera overlay
-  - for both mobile and desktop
-    - camera + mic
-    - audio record
-- todo list using localStorage() as well as option to download and upload the list, on upload the list in localstorage will get appended not overriden
-- check if something else obvious could be added
-- enable react compiler
-- make easy to make overall improvemenst which wont breack anything
-- check the biome tests and build test passes and fix them if needed
-- test everything end to end and update any thing related as well like tests and playwright scripts
-- then update the readme, note that all fetures should be reflected here, and if the readme is feeded to an llm it shoould be able to answer all the question in detail low level manner for both end user as well as developers
