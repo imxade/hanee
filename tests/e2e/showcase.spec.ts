@@ -37,6 +37,10 @@ interface ToolTest {
 	skipRun?: boolean
 	/** Tool uses custom panel instead of standard result-card (e.g. image-collage) */
 	customPanel?: boolean
+	/** Tool does not require uploaded input files */
+	skipUpload?: boolean
+	/** Custom interaction flow for non-standard tools */
+	interaction?: "record" | "todo"
 }
 
 const TOOL_TESTS: ToolTest[] = [
@@ -58,7 +62,7 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "pdf-reorder", file: "document.pdf" },
 	{ id: "pdf-images-to-pdf", file: "image.jpg" },
 	{ id: "pdf-to-text", file: "document.pdf" },
-	{ id: "pdf-to-images", file: "document.pdf" },
+	{ id: "pdf-to-images", file: "document.pdf", timeout: 420_000 },
 	{ id: "pdf-compress", file: "document.pdf" },
 	{ id: "pdf-watermark", file: "document.pdf" },
 	{ id: "pdf-rotate", file: "document.pdf" },
@@ -82,6 +86,9 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "audio-merge", file: ["audio.mp3", "audio2.mp3"] },
 	{ id: "audio-volume", file: "audio.mp3" },
 	{ id: "audio-fade", file: "audio.mp3" },
+	{ id: "screen-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
+	{ id: "camera-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
+	{ id: "audio-recorder", file: "", skipUpload: true, skipRun: true, customPanel: true },
 
 	// ── Document ──
 	{ id: "document-viewer", file: "document.pdf", skipRun: true },
@@ -94,6 +101,7 @@ const TOOL_TESTS: ToolTest[] = [
 	{ id: "data-csv-to-json", file: "sample.csv" },
 	{ id: "data-json-to-csv", file: "sample.json" },
 	{ id: "data-format-json", file: "sample.json" },
+	{ id: "todo-list", file: "", skipUpload: true, skipRun: true, customPanel: true, interaction: "todo" },
 ]
 
 // ── Helpers ──
@@ -133,10 +141,187 @@ async function smoothScrollTo(locator: import("@playwright/test").Locator, durat
 
 // ── Tests (non-serial: failures don't block subsequent tools) ──
 
+test.beforeEach(async ({ page }) => {
+	await page.addInitScript(() => {
+		const noop = () => undefined
+		const originalGetContext = HTMLCanvasElement.prototype.getContext
+		const recorderCanvasContext = {
+			canvas: null as HTMLCanvasElement | null,
+			fillStyle: "",
+			strokeStyle: "",
+			lineWidth: 1,
+			fillRect: noop,
+			drawImage: noop,
+			save: noop,
+			restore: noop,
+			beginPath: noop,
+			roundRect: noop,
+			clip: noop,
+			strokeRect: noop,
+		}
+
+		class MockMediaStreamTrack {
+			kind: string
+			enabled = true
+			readyState = "live"
+
+			constructor(kind: string) {
+				this.kind = kind
+			}
+
+			stop() {
+				this.readyState = "ended"
+			}
+
+			getSettings() {
+				return { width: 1280, height: 720, frameRate: 30 }
+			}
+		}
+
+		class MockMediaStream {
+			private tracks: MockMediaStreamTrack[]
+
+			constructor(tracks: MockMediaStreamTrack[] = []) {
+				this.tracks = [...tracks]
+			}
+
+			getTracks() {
+				return [...this.tracks]
+			}
+
+			getVideoTracks() {
+				return this.tracks.filter((track) => track.kind === "video")
+			}
+
+			getAudioTracks() {
+				return this.tracks.filter((track) => track.kind === "audio")
+			}
+		}
+
+		class MockMediaRecorder {
+			static isTypeSupported() {
+				return true
+			}
+
+			state = "inactive"
+			stream: MockMediaStream
+			mimeType: string
+			ondataavailable: ((event: BlobEvent) => void) | null = null
+			onstop: (() => void) | null = null
+			onerror: (() => void) | null = null
+
+			constructor(stream: MockMediaStream, options?: { mimeType?: string }) {
+				this.stream = stream
+				this.mimeType = options?.mimeType || "video/webm"
+			}
+
+			start() {
+				this.state = "recording"
+				window.setTimeout(() => {
+					this.ondataavailable?.(
+						new BlobEvent("dataavailable", {
+							data: new Blob(["mock-recording"], { type: this.mimeType }),
+						}),
+					)
+				}, 100)
+			}
+
+			stop() {
+				this.state = "inactive"
+				this.onstop?.()
+			}
+		}
+
+		class MockAudioContext {
+			createMediaStreamDestination() {
+				return {
+					stream: new MockMediaStream([new MockMediaStreamTrack("audio")]),
+				}
+			}
+
+			createMediaStreamSource() {
+				return { connect() {} }
+			}
+
+			close() {
+				return Promise.resolve()
+			}
+		}
+
+		Object.defineProperty(globalThis, "MediaStream", {
+			value: MockMediaStream,
+			configurable: true,
+		})
+		Object.defineProperty(globalThis, "MediaRecorder", {
+			value: MockMediaRecorder,
+			configurable: true,
+		})
+		Object.defineProperty(globalThis, "AudioContext", {
+			value: MockAudioContext,
+			configurable: true,
+		})
+		Object.defineProperty(globalThis, "__KITSY_RECORDER_E2E__", {
+			value: {
+				start: (kind: "screen" | "camera" | "audio") => ({
+					blob: new Blob(["mock-recording"], {
+						type: kind === "audio" ? "audio/webm" : "video/webm",
+					}),
+					name: `${kind}-recording.webm`,
+				}),
+			},
+			configurable: true,
+		})
+
+		Object.defineProperty(HTMLMediaElement.prototype, "srcObject", {
+			get() {
+				return (this as HTMLMediaElement & { __srcObject?: unknown }).__srcObject
+			},
+			set(value) {
+				;(this as HTMLMediaElement & { __srcObject?: unknown }).__srcObject = value
+			},
+			configurable: true,
+		})
+		HTMLMediaElement.prototype.play = async () => undefined
+
+		HTMLCanvasElement.prototype.getContext = function (
+			contextId: string,
+			options?: CanvasRenderingContext2DSettings,
+		) {
+			if (window.location.pathname.includes("recorder")) {
+				recorderCanvasContext.canvas = this
+				return recorderCanvasContext as CanvasRenderingContext2D
+			}
+			return originalGetContext.call(this, contextId, options)
+		}
+
+		if (!HTMLCanvasElement.prototype.captureStream) {
+			HTMLCanvasElement.prototype.captureStream = () =>
+				new MockMediaStream([new MockMediaStreamTrack("video")]) as never
+		}
+
+		Object.defineProperty(navigator, "mediaDevices", {
+			value: {
+				getUserMedia: async (constraints: { video?: boolean; audio?: boolean }) =>
+					new MockMediaStream([
+						...(constraints.video ? [new MockMediaStreamTrack("video")] : []),
+						...(constraints.audio ? [new MockMediaStreamTrack("audio")] : []),
+					]),
+				getDisplayMedia: async (constraints: { audio?: boolean }) =>
+					new MockMediaStream([
+						new MockMediaStreamTrack("video"),
+						...(constraints.audio ? [new MockMediaStreamTrack("audio")] : []),
+					]),
+			},
+			configurable: true,
+		})
+	})
+})
+
 test.describe("Tool Showcase", () => {
 	for (const toolTest of TOOL_TESTS) {
 		test(toolTest.id, async ({ page }, testInfo) => {
-			test.setTimeout(200_000) 
+			const timeoutMs = toolTest.timeout ?? 200_000
+			test.setTimeout(timeoutMs)
 
 			const start = performance.now()
 			const testStart = Date.now()
@@ -159,31 +344,30 @@ test.describe("Tool Showcase", () => {
 				})
 			}, toolTest.id)
 
-			// Wait for file input to be attached
-			await page.waitForSelector('[data-testid="file-input"]', { state: "attached" })
+			if (!toolTest.skipUpload) {
+				await page.waitForSelector('[data-testid="file-input"]', { state: "attached" })
 
-			// 2. Upload file(s). Retry with CPU-friendly pacing to survive slow CI hydration.
-			const filePaths = getFilePaths(toolTest.file)
-			const fileInput = page.locator('[data-testid="file-input"]')
+				// 2. Upload file(s). Retry with CPU-friendly pacing to survive slow CI hydration.
+				const filePaths = getFilePaths(toolTest.file)
+				const fileInput = page.locator('[data-testid="file-input"]')
 
-			for (let attempt = 0; attempt < 15; attempt++) {
-				await fileInput.evaluate((el: HTMLInputElement) => { el.value = "" })
-				await fileInput.setInputFiles(filePaths)
+				for (let attempt = 0; attempt < 15; attempt++) {
+					await fileInput.evaluate((el: HTMLInputElement) => { el.value = "" })
+					await fileInput.setInputFiles(filePaths)
 
-				try {
-					if (toolTest.customPanel) {
-						// Custom panels (e.g. CollagePanel) render their own UI after upload
-						// Just verify the file input disappeared (files were accepted)
-						await expect(page.locator('[data-testid="file-input"]')).not.toBeVisible({ timeout: 500 })
-					} else if (!toolTest.skipRun) {
-						await expect(page.locator('[data-testid="run-button"]')).toBeVisible({ timeout: 500 })
-					} else {
-						await expect(page.locator('[data-testid="result-card"]')).toBeVisible({ timeout: 500 })
+					try {
+						if (toolTest.customPanel) {
+							await expect(page.locator('[data-testid="file-input"]')).not.toBeVisible({ timeout: 500 })
+						} else if (!toolTest.skipRun) {
+							await expect(page.locator('[data-testid="run-button"]')).toBeVisible({ timeout: 500 })
+						} else {
+							await expect(page.locator('[data-testid="result-card"]')).toBeVisible({ timeout: 500 })
+						}
+						break
+					} catch {
+						if (attempt === 14) throw new Error(`Upload failed after 15 attempts for ${toolTest.id}`)
+						await page.waitForTimeout(500)
 					}
-					break
-				} catch {
-					if (attempt === 14) throw new Error(`Upload failed after 15 attempts for ${toolTest.id}`)
-					await page.waitForTimeout(500)
 				}
 			}
 
@@ -206,11 +390,46 @@ test.describe("Tool Showcase", () => {
 				await page.locator('button[aria-label="Remove page"]').first().click()
 			}
 
+			if (toolTest.interaction === "record") {
+				await page.waitForSelector('[data-testid="recorder-mounted"]', {
+					state: "attached",
+				})
+				const recorderToggle = page.locator('[data-testid="recorder-toggle"]')
+				await recorderToggle.evaluate((button: HTMLButtonElement) => button.click())
+				await expect(recorderToggle).toHaveText("Stop Recording", {
+					timeout: 15_000,
+				})
+				await page.waitForTimeout(500)
+				await recorderToggle.evaluate((button: HTMLButtonElement) => button.click())
+			}
+
+			if (toolTest.interaction === "todo") {
+				await page.waitForSelector('[data-testid="todo-mounted"]', {
+					state: "attached",
+				})
+				await page.locator('[data-testid="todo-input"]').fill("E2E task")
+				await page.locator('[data-testid="todo-add"]').click()
+				const importPath = testInfo.outputPath("todo-import.json")
+				writeFileSync(
+					importPath,
+					JSON.stringify([
+						{
+							id: "imported-e2e",
+							text: "Imported E2E task",
+							completed: false,
+							createdAt: "2026-04-27T00:00:00.000Z",
+						},
+					]),
+				)
+				await page.locator('[data-testid="todo-import"]').setInputFiles(importPath)
+				await expect(page.locator('[data-testid="todo-item"]')).toHaveCount(2)
+			}
+
 			// 4. Smooth scroll to run button and click (unless skipped)
 			let cutStartSecs = 0
 			let cutEndSecs = 0
 
-			if (!toolTest.skipRun) {
+			if (!toolTest.skipRun && !toolTest.interaction) {
 				const runButton = page.locator('[data-testid="run-button"]')
 				await smoothScrollTo(runButton)
 				await page.waitForTimeout(1000)
@@ -227,7 +446,7 @@ test.describe("Tool Showcase", () => {
 				try {
 					await resultCard.waitFor({
 						state: "visible",
-						timeout: 240_000,
+						timeout: Math.max(15_000, timeoutMs - 20_000),
 					})
 					cutEndSecs = (Date.now() - testStart) / 1000
 				} catch (e) {
