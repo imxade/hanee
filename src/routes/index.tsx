@@ -1,7 +1,7 @@
+import { useMemo } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 import { getAllTools, getCategories } from "../lib/tool-registry"
-import { rankToolsByQuery } from "../lib/search"
 import ToolCard from "../components/ToolCard"
 import Icon from "../components/Icon"
 
@@ -18,7 +18,18 @@ function HomePage() {
 	const { q: query = "" } = Route.useSearch()
 	const categories = getCategories()
 	const allTools = getAllTools()
-	const filteredTools = rankToolsByQuery(allTools, query)
+
+	const filteredTools = useMemo(() => {
+		const q = query.toLowerCase().trim()
+		if (!q) return null // null = show all by category
+		return allTools.filter(
+			(t) =>
+				t.name.toLowerCase().includes(q) ||
+				t.description.toLowerCase().includes(q) ||
+				t.category.toLowerCase().includes(q) ||
+				t.acceptedExtensions.some((ext) => ext.toLowerCase().includes(q)),
+		)
+	}, [query, allTools])
 
 	return (
 		<main className="max-w-6xl mx-auto px-4 pb-12 pt-8">

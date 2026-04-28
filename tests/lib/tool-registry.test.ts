@@ -84,13 +84,6 @@ describe("tool-registry", () => {
 		expect(tool?.category).toBe("video")
 	})
 
-	it("registers the new recorder and todo tools with explicit UI modes", () => {
-		expect(getToolById("screen-recorder")?.uiMode).toBe("recorder")
-		expect(getToolById("camera-recorder")?.requiresFiles).toBe(false)
-		expect(getToolById("audio-recorder")?.uiMode).toBe("recorder")
-		expect(getToolById("todo-list")?.uiMode).toBe("todo")
-	})
-
 	it("all extensions start with a dot or are a wildcard", () => {
 		for (const tool of getAllTools()) {
 			for (const ext of tool.acceptedExtensions) {

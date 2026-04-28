@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type ViteDevServer, type PreviewServer } from "vite"
 import { devtools } from "@tanstack/devtools-vite"
+import tsconfigPaths from "vite-tsconfig-paths"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import viteReact from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
@@ -44,10 +45,6 @@ function coopCoepMiddleware() {
 }
 
 export default defineConfig({
-	resolve: {
-		tsconfigPaths: true,
-	},
-
 	server: {
 		host: true,
 		port: 3000,
@@ -82,17 +79,14 @@ export default defineConfig({
 			},
 		}),
 
+		tsconfigPaths({ projects: ["./tsconfig.json"] }),
 		tailwindcss(),
 		tanstackStart({
 			router: {
 				autoCodeSplitting: false,
 			},
 		}),
-		viteReact({
-			babel: {
-				plugins: [["babel-plugin-react-compiler"]],
-			},
-		}),
+		viteReact(),
 
 		serwist({
 			swSrc: "src/sw.ts",
