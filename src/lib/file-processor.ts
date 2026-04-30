@@ -1,4 +1,5 @@
 import { zipSync, unzipSync } from "fflate"
+import Papa from "papaparse"
 import type { ProcessedFile } from "./image-processor"
 
 export async function createZip(files: File[]): Promise<ProcessedFile> {
@@ -43,7 +44,6 @@ export async function unzipFiles(file: File): Promise<ProcessedFile[]> {
  * Handles quoted fields, multiline cells, and various delimiters.
  */
 export async function csvToJson(file: File): Promise<ProcessedFile> {
-	const Papa = (await import("papaparse")).default
 	const text = await file.text()
 
 	return new Promise((resolve, reject) => {
@@ -66,7 +66,6 @@ export async function csvToJson(file: File): Promise<ProcessedFile> {
  * Convert JSON array to CSV using PapaParse.
  */
 export async function jsonToCsv(file: File): Promise<ProcessedFile> {
-	const Papa = (await import("papaparse")).default
 	const text = await file.text()
 	const data = JSON.parse(text)
 

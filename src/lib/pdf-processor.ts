@@ -1,7 +1,14 @@
 // ── PDF Processor — pdf-lib + pdfjs-dist ──
 
-import { PDFDocument } from "pdf-lib"
+import {
+	PDFDocument,
+	StandardFonts,
+	degrees,
+	rgb,
+	type PDFImage,
+} from "pdf-lib"
 import { type ProcessedFile, loadDrawable } from "./image-processor"
+import { getPdfjsLib } from "./pdfjs"
 
 /** pdf-lib returns Uint8Array<ArrayBufferLike> which TS6 rejects as BlobPart.
  *  Slice to get a fresh ArrayBuffer-backed copy. */
@@ -112,7 +119,7 @@ export async function imagesToPdf(files: File[]): Promise<ProcessedFile> {
 	for (const file of files) {
 		const imgBytes = await file.arrayBuffer()
 		const uint8 = new Uint8Array(imgBytes)
-		let image: import("pdf-lib").PDFImage
+		let image: PDFImage
 		if (file.type === "image/png") {
 			image = await doc.embedPng(uint8)
 		} else if (file.type === "image/jpeg" || file.type === "image/jpg") {
@@ -169,7 +176,6 @@ export async function addPdfWatermark(
 ): Promise<ProcessedFile> {
 	const bytes = await file.arrayBuffer()
 	const doc = await PDFDocument.load(bytes)
-	const { StandardFonts, rgb, degrees } = await import("pdf-lib")
 	const font = await doc.embedFont(StandardFonts.Helvetica)
 	const pages = doc.getPages()
 
@@ -199,7 +205,6 @@ export async function rotatePdf(
 ): Promise<ProcessedFile> {
 	const bytes = await file.arrayBuffer()
 	const doc = await PDFDocument.load(bytes)
-	const { degrees } = await import("pdf-lib")
 	const pages = doc.getPages()
 
 	for (const page of pages) {
@@ -212,18 +217,6 @@ export async function rotatePdf(
 		blob: pdfBlob(new Uint8Array(rotatedBytes)),
 		name: `${file.name.replace(/\.pdf$/i, "")}-rotated.pdf`,
 	}
-}
-
-let pdfjsInitialized = false
-
-async function getPdfjsLib() {
-	const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
-	if (!pdfjsInitialized) {
-		const workerUrl = await import("pdfjs-dist/legacy/build/pdf.worker.mjs?url")
-		pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl.default
-		pdfjsInitialized = true
-	}
-	return pdfjsLib
 }
 
 export async function pdfToText(file: File): Promise<ProcessedFile> {

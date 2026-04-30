@@ -1,5 +1,7 @@
 // ── Image Processor — Canvas API ──
 
+import ImageTracer from "imagetracerjs"
+
 export interface ProcessedFile {
 	blob: Blob
 	name: string
@@ -315,8 +317,6 @@ export async function imageToSvg(
 	file: File,
 	options: Record<string, unknown> = {},
 ): Promise<ProcessedFile> {
-	const ImageTracer = (await import("imagetracerjs")).default
-
 	const { img, width, height, close } = await loadDrawable(file)
 	const canvas = new OffscreenCanvas(width, height)
 	const ctx = canvas.getContext("2d")
