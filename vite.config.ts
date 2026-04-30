@@ -1,41 +1,36 @@
 /// <reference types="vitest/config" />
+
 import { defineConfig, type ViteDevServer, type PreviewServer } from "vite"
-import { devtools } from "@tanstack/devtools-vite"
-import tsconfigPaths from "vite-tsconfig-paths"
-import { tanstackStart } from "@tanstack/react-start/plugin/vite"
-import viteReact from "@vitejs/plugin-react"
+import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
+import { devtools } from "@tanstack/devtools-vite"
+import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { nitro } from "nitro/vite"
 import { serwist } from "@serwist/vite"
 import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 
-let ffmpegCoreVersion = "unknown"
-try {
-	const pkg = JSON.parse(
-		readFileSync(resolve("node_modules/@ffmpeg/core/package.json"), "utf8"),
-	)
-	ffmpegCoreVersion = pkg.version
-} catch (_e) {
-	console.warn("Failed to read @ffmpeg/core version")
-}
+const entry = fileURLToPath(import.meta.resolve("@ffmpeg/core"))
+const pkgPath = join(dirname(entry), "..", "..", "package.json")
+const ffmpegPkg = JSON.parse(readFileSync(pkgPath, "utf-8"))
+const ffmpegCoreVersion = ffmpegPkg.version
+const crossOriginOpenerPolicy = "same-origin-allow-popups"
 
-function coopCoepMiddleware() {
+function coopCoepDevOnly() {
 	return {
-		name: "coop-coep-middleware",
-
+		name: "coop-coep-dev",
 		configureServer(server: ViteDevServer) {
 			server.middlewares.use((_req, res, next) => {
-				res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
+				res.setHeader("Cross-Origin-Opener-Policy", crossOriginOpenerPolicy)
 				res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
 				res.setHeader("Cross-Origin-Resource-Policy", "same-origin")
 				next()
 			})
 		},
-
 		configurePreviewServer(server: PreviewServer) {
 			server.middlewares.use((_req, res, next) => {
-				res.setHeader("Cross-Origin-Opener-Policy", "same-origin")
+				res.setHeader("Cross-Origin-Opener-Policy", crossOriginOpenerPolicy)
 				res.setHeader("Cross-Origin-Embedder-Policy", "require-corp")
 				res.setHeader("Cross-Origin-Resource-Policy", "same-origin")
 				next()
@@ -54,11 +49,18 @@ export default defineConfig({
 		host: true,
 		port: 3000,
 	},
-
 	plugins: [
 		devtools(),
-		coopCoepMiddleware(),
-
+		coopCoepDevOnly(),
+		tanstackStart({
+			// router: {
+			// 	autoCodeSplitting: false,
+			// },
+		}),
+		react({
+			reactCompiler: true,
+		}),
+		tailwindcss(),
 		nitro({
 			publicAssets: [
 				{
@@ -67,27 +69,19 @@ export default defineConfig({
 					maxAge: 0,
 				},
 			],
-			rollupConfig: { external: [/^@sentry\//] },
+			externals: {
+				external: ["@sentry/*"],
+			},
 			routeRules: {
 				"/**": {
 					headers: {
-						"Cross-Origin-Opener-Policy": "same-origin",
+						"Cross-Origin-Opener-Policy": crossOriginOpenerPolicy,
 						"Cross-Origin-Embedder-Policy": "require-corp",
 						"Cross-Origin-Resource-Policy": "same-origin",
 					},
 				},
 			},
 		}),
-
-		tsconfigPaths({ projects: ["./tsconfig.json"] }),
-		tailwindcss(),
-		tanstackStart({
-			router: {
-				autoCodeSplitting: false,
-			},
-		}),
-		viteReact(),
-
 		serwist({
 			swSrc: "src/sw.ts",
 			swDest: "sw.js",
@@ -109,7 +103,7 @@ export default defineConfig({
 			devOptions: {
 				enabled: true,
 			},
-			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024, // 50MB
+			maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
 		}),
 	],
 
