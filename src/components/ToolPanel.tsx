@@ -1,12 +1,16 @@
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
+import * as docxPreview from "docx-preview"
+import { getPdfjsLib } from "../lib/pdfjs"
+import { PDFDocument } from "pdf-lib"
 import type { ToolDefinition } from "../lib/tool-registry"
 import type { ProcessedFile } from "../lib/image-processor"
 import { createZip } from "../lib/file-processor"
 import FileDropzone from "./FileDropzone"
-import { lazy, Suspense } from "react"
+import { useAppShell } from "./AppShellProvider"
 import Icon from "./Icon"
-
-const CollagePanel = lazy(() => import("./CollagePanel"))
+import CollagePanel from "./CollagePanel"
+import RecorderPanel from "./RecorderPanel"
+import TodoListPanel from "./TodoListPanel"
 
 interface ToolPanelProps {
 	tool: ToolDefinition
@@ -19,6 +23,140 @@ function formatTime(seconds: number): string {
 	const m = Math.floor((seconds % 3600) / 60)
 	const s = Math.floor(seconds % 60)
 	return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+}
+
+interface CropSelection {
+	x: number
+	y: number
+	cropWidth: number
+	cropHeight: number
+}
+
+interface CropBounds {
+	width: number
+	height: number
+}
+
+type CropGestureMode = "move" | "resize" | null
+
+function clampCropSelection(
+	selection: CropSelection,
+	bounds: CropBounds,
+): CropSelection {
+	const cropWidth = Math.min(
+		Math.max(Math.round(selection.cropWidth), 10),
+		Math.max(bounds.width, 10),
+	)
+	const cropHeight = Math.min(
+		Math.max(Math.round(selection.cropHeight), 10),
+		Math.max(bounds.height, 10),
+	)
+	const x = Math.min(
+		Math.max(Math.round(selection.x), 0),
+		Math.max(bounds.width - cropWidth, 0),
+	)
+	const y = Math.min(
+		Math.max(Math.round(selection.y), 0),
+		Math.max(bounds.height - cropHeight, 0),
+	)
+
+	return { x, y, cropWidth, cropHeight }
+}
+
+function useCropInteraction({
+	x,
+	y,
+	cropWidth,
+	cropHeight,
+	scale,
+	bounds,
+	onCropChange,
+}: CropSelection & {
+	scale: number
+	bounds: CropBounds
+	onCropChange: (crop: CropSelection) => void
+}) {
+	const [activeMode, setActiveMode] = useState<CropGestureMode>(null)
+	const boundsRef = useRef({ width: bounds.width, height: bounds.height })
+	const onCropChangeRef = useRef(onCropChange)
+	const gestureRef = useRef({
+		startX: 0,
+		startY: 0,
+		origin: { x, y, cropWidth, cropHeight },
+	})
+
+	useEffect(() => {
+		boundsRef.current = { width: bounds.width, height: bounds.height }
+	}, [bounds.height, bounds.width])
+
+	useEffect(() => {
+		onCropChangeRef.current = onCropChange
+	}, [onCropChange])
+
+	useEffect(() => {
+		if (!activeMode) return
+
+		const safeScale = scale > 0 ? scale : 1
+		const handleMove = (event: PointerEvent) => {
+			if (event.cancelable) event.preventDefault()
+			const dx = (event.clientX - gestureRef.current.startX) / safeScale
+			const dy = (event.clientY - gestureRef.current.startY) / safeScale
+			const origin = gestureRef.current.origin
+			const next =
+				activeMode === "move"
+					? {
+							x: origin.x + dx,
+							y: origin.y + dy,
+							cropWidth: origin.cropWidth,
+							cropHeight: origin.cropHeight,
+						}
+					: {
+							x: origin.x,
+							y: origin.y,
+							cropWidth: origin.cropWidth + dx,
+							cropHeight: origin.cropHeight + dy,
+						}
+
+			onCropChangeRef.current(clampCropSelection(next, boundsRef.current))
+		}
+
+		const finish = () => {
+			setActiveMode(null)
+		}
+
+		window.addEventListener("pointermove", handleMove, { passive: false })
+		window.addEventListener("pointerup", finish)
+		window.addEventListener("pointercancel", finish)
+		return () => {
+			window.removeEventListener("pointermove", handleMove)
+			window.removeEventListener("pointerup", finish)
+			window.removeEventListener("pointercancel", finish)
+		}
+	}, [activeMode, scale])
+
+	const beginGesture = (
+		event: React.PointerEvent<HTMLDivElement>,
+		mode: Exclude<CropGestureMode, null>,
+	) => {
+		event.preventDefault()
+		event.stopPropagation()
+		gestureRef.current = {
+			startX: event.clientX,
+			startY: event.clientY,
+			origin: clampCropSelection(
+				{ x, y, cropWidth, cropHeight },
+				boundsRef.current,
+			),
+		}
+		setActiveMode(mode)
+	}
+
+	return {
+		beginMove: (event: React.PointerEvent<HTMLDivElement>) =>
+			beginGesture(event, "move"),
+		beginResize: (event: React.PointerEvent<HTMLDivElement>) =>
+			beginGesture(event, "resize"),
+	}
 }
 
 function RemoveButton({
@@ -221,12 +359,8 @@ function PdfPagePreview({
 		let cancelled = false
 		;(async () => {
 			try {
-				const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs")
-				const workerUrl = await import(
-					"pdfjs-dist/legacy/build/pdf.worker.mjs?url"
-				)
-				pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl.default
 				const bytes = await file.arrayBuffer()
+				const pdfjsLib = await getPdfjsLib()
 				const doc = await pdfjsLib.getDocument({
 					data: new Uint8Array(bytes),
 					useWorkerFetch: false,
@@ -310,7 +444,6 @@ function PdfAllPagesPreview({
 	useEffect(() => {
 		;(async () => {
 			try {
-				const { PDFDocument } = await import("pdf-lib")
 				const bytes = await file.arrayBuffer()
 				const doc = await PDFDocument.load(bytes, { ignoreEncryption: true })
 				const count = doc.getPageCount()
@@ -415,10 +548,6 @@ function VideoCropPreview({
 	}, [file])
 	const containerRef = useRef<HTMLDivElement>(null)
 	const [vidSize, setVidSize] = useState({ w: 0, h: 0 })
-	const [dragging, setDragging] = useState(false)
-	const [resizing, setResizing] = useState(false)
-	const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 })
-	const resizeStart = useRef({ x: 0, y: 0, ow: 0, oh: 0 })
 
 	const handleVidLoad = (e: React.SyntheticEvent<HTMLVideoElement>) => {
 		setVidSize({
@@ -429,53 +558,15 @@ function VideoCropPreview({
 
 	const containerWidth = containerRef.current?.clientWidth || 400
 	const scale = vidSize.w > 0 ? containerWidth / vidSize.w : 1
-
-	const handleMouseDown = (e: React.MouseEvent) => {
-		setDragging(true)
-		dragStart.current = { x: e.clientX, y: e.clientY, ox: x, oy: y }
-	}
-
-	useEffect(() => {
-		if (!dragging) return
-		const handleMove = (e: MouseEvent) => {
-			const dx = (e.clientX - dragStart.current.x) / scale
-			const dy = (e.clientY - dragStart.current.y) / scale
-			onCropChange({
-				x: Math.max(0, Math.round(dragStart.current.ox + dx)),
-				y: Math.max(0, Math.round(dragStart.current.oy + dy)),
-				cropWidth,
-				cropHeight,
-			})
-		}
-		const handleUp = () => setDragging(false)
-		window.addEventListener("mousemove", handleMove)
-		window.addEventListener("mouseup", handleUp)
-		return () => {
-			window.removeEventListener("mousemove", handleMove)
-			window.removeEventListener("mouseup", handleUp)
-		}
-	}, [dragging, scale, cropWidth, cropHeight, onCropChange])
-
-	useEffect(() => {
-		if (!resizing) return
-		const handleResizeMove = (e: MouseEvent) => {
-			const dx = (e.clientX - resizeStart.current.x) / scale
-			const dy = (e.clientY - resizeStart.current.y) / scale
-			onCropChange({
-				x,
-				y,
-				cropWidth: Math.max(10, Math.round(resizeStart.current.ow + dx)),
-				cropHeight: Math.max(10, Math.round(resizeStart.current.oh + dy)),
-			})
-		}
-		const handleResizeUp = () => setResizing(false)
-		window.addEventListener("mousemove", handleResizeMove)
-		window.addEventListener("mouseup", handleResizeUp)
-		return () => {
-			window.removeEventListener("mousemove", handleResizeMove)
-			window.removeEventListener("mouseup", handleResizeUp)
-		}
-	}, [resizing, scale, x, y, onCropChange])
+	const { beginMove, beginResize } = useCropInteraction({
+		x,
+		y,
+		cropWidth,
+		cropHeight,
+		scale,
+		bounds: { width: vidSize.w, height: vidSize.h },
+		onCropChange,
+	})
 
 	if (!url) return null
 
@@ -505,26 +596,20 @@ function VideoCropPreview({
 							top: y * scale,
 							width: Math.min(cropWidth, vidSize.w - x) * scale,
 							height: Math.min(cropHeight, vidSize.h - y) * scale,
+							touchAction: "none",
 						}}
-						onMouseDown={handleMouseDown}
+						onPointerDown={beginMove}
 						onKeyDown={() => {}}
+						data-testid="crop-selection"
 					>
 						{/* biome-ignore lint/a11y/useSemanticElements: Crop resize handle */}
 						<div
 							role="button"
 							tabIndex={0}
 							className="absolute -right-2 -bottom-2 w-4 h-4 bg-primary border-2 border-base-100/50 rounded-full cursor-se-resize shadow-md"
-							onMouseDown={(e) => {
-								e.stopPropagation()
-								setResizing(true)
-								resizeStart.current = {
-									x: e.clientX,
-									y: e.clientY,
-									ow: cropWidth,
-									oh: cropHeight,
-								}
-							}}
+							onPointerDown={beginResize}
 							onKeyDown={() => {}}
+							data-testid="crop-resize-handle"
 						/>
 					</div>
 				)}
@@ -568,10 +653,6 @@ function ImageCropPreview({
 	}, [file])
 	const containerRef = useRef<HTMLDivElement>(null)
 	const [imgSize, setImgSize] = useState({ w: 0, h: 0 })
-	const [dragging, setDragging] = useState(false)
-	const [resizing, setResizing] = useState(false)
-	const dragStart = useRef({ x: 0, y: 0, ox: 0, oy: 0 })
-	const resizeStart = useRef({ x: 0, y: 0, ow: 0, oh: 0 })
 
 	const handleImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
 		setImgSize({
@@ -582,53 +663,15 @@ function ImageCropPreview({
 
 	const containerWidth = containerRef.current?.clientWidth || 400
 	const scale = imgSize.w > 0 ? containerWidth / imgSize.w : 1
-
-	const handleMouseDown = (e: React.MouseEvent) => {
-		setDragging(true)
-		dragStart.current = { x: e.clientX, y: e.clientY, ox: x, oy: y }
-	}
-
-	useEffect(() => {
-		if (!dragging) return
-		const handleMove = (e: MouseEvent) => {
-			const dx = (e.clientX - dragStart.current.x) / scale
-			const dy = (e.clientY - dragStart.current.y) / scale
-			onCropChange({
-				x: Math.max(0, Math.round(dragStart.current.ox + dx)),
-				y: Math.max(0, Math.round(dragStart.current.oy + dy)),
-				cropWidth,
-				cropHeight,
-			})
-		}
-		const handleUp = () => setDragging(false)
-		window.addEventListener("mousemove", handleMove)
-		window.addEventListener("mouseup", handleUp)
-		return () => {
-			window.removeEventListener("mousemove", handleMove)
-			window.removeEventListener("mouseup", handleUp)
-		}
-	}, [dragging, scale, cropWidth, cropHeight, onCropChange])
-
-	useEffect(() => {
-		if (!resizing) return
-		const handleResizeMove = (e: MouseEvent) => {
-			const dx = (e.clientX - resizeStart.current.x) / scale
-			const dy = (e.clientY - resizeStart.current.y) / scale
-			onCropChange({
-				x,
-				y,
-				cropWidth: Math.max(10, Math.round(resizeStart.current.ow + dx)),
-				cropHeight: Math.max(10, Math.round(resizeStart.current.oh + dy)),
-			})
-		}
-		const handleResizeUp = () => setResizing(false)
-		window.addEventListener("mousemove", handleResizeMove)
-		window.addEventListener("mouseup", handleResizeUp)
-		return () => {
-			window.removeEventListener("mousemove", handleResizeMove)
-			window.removeEventListener("mouseup", handleResizeUp)
-		}
-	}, [resizing, scale, x, y, onCropChange])
+	const { beginMove, beginResize } = useCropInteraction({
+		x,
+		y,
+		cropWidth,
+		cropHeight,
+		scale,
+		bounds: { width: imgSize.w, height: imgSize.h },
+		onCropChange,
+	})
 
 	if (!url) return null
 
@@ -656,26 +699,20 @@ function ImageCropPreview({
 							top: y * scale,
 							width: Math.min(cropWidth, imgSize.w - x) * scale,
 							height: Math.min(cropHeight, imgSize.h - y) * scale,
+							touchAction: "none",
 						}}
-						onMouseDown={handleMouseDown}
+						onPointerDown={beginMove}
 						onKeyDown={() => {}}
+						data-testid="crop-selection"
 					>
 						{/* biome-ignore lint/a11y/useSemanticElements: Crop resize handle */}
 						<div
 							role="button"
 							tabIndex={0}
 							className="absolute -right-2 -bottom-2 w-4 h-4 bg-primary border-2 border-base-100/50 rounded-full cursor-se-resize shadow-md"
-							onMouseDown={(e) => {
-								e.stopPropagation()
-								setResizing(true)
-								resizeStart.current = {
-									x: e.clientX,
-									y: e.clientY,
-									ow: cropWidth,
-									oh: cropHeight,
-								}
-							}}
+							onPointerDown={beginResize}
 							onKeyDown={() => {}}
+							data-testid="crop-resize-handle"
 						/>
 					</div>
 				)}
@@ -768,7 +805,6 @@ function DocxPreview({ blob, name }: { blob: Blob; name: string }) {
 		const render = async () => {
 			if (!containerRef.current) return
 			try {
-				const docxPreview = await import("docx-preview")
 				if (cancelled || !containerRef.current) return
 				containerRef.current.innerHTML = ""
 				await docxPreview.renderAsync(blob, containerRef.current, undefined, {
@@ -783,7 +819,12 @@ function DocxPreview({ blob, name }: { blob: Blob; name: string }) {
 				})
 			} catch (err) {
 				if (!cancelled && containerRef.current) {
-					containerRef.current.innerHTML = `<p class="p-4 text-error">Failed to render DOCX: ${err instanceof Error ? err.message : "Unknown error"}</p>`
+					const errorMessage = document.createElement("p")
+					errorMessage.className = "p-4 text-error"
+					errorMessage.textContent = `Failed to render DOCX: ${
+						err instanceof Error ? err.message : "Unknown error"
+					}`
+					containerRef.current.replaceChildren(errorMessage)
 				}
 			} finally {
 				if (!cancelled) setLoading(false)
@@ -841,6 +882,9 @@ function isAudio(file: File) {
 // -- Main --
 
 export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
+	const uiMode = tool.uiMode ?? "standard"
+	const requiresFiles = tool.requiresFiles ?? true
+	const { cloud } = useAppShell()
 	const fileInputRef = useRef<HTMLInputElement>(null)
 	const [files, setFiles] = useState<File[]>([])
 	const [options, setOptions] = useState<Record<string, unknown>>(() => {
@@ -853,16 +897,20 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 	const [isProcessing, setIsProcessing] = useState(false)
 	const [results, setResults] = useState<ProcessedFile[] | null>(null)
 	const [error, setError] = useState<string | null>(null)
+	const [cloudMessage, setCloudMessage] = useState<string | null>(null)
+	const [activeUploads, setActiveUploads] = useState<string[]>([])
 
-	const handleFilesSelected = useCallback((newFiles: File[]) => {
+	const handleFilesSelected = (newFiles: File[]) => {
 		setFiles(newFiles)
 		setResults(null)
 		setError(null)
-	}, [])
+		setCloudMessage(null)
+	}
 
-	const removeFile = useCallback((idx: number) => {
+	const removeFile = (idx: number) => {
 		setFiles((p) => p.filter((_, j) => j !== idx))
-	}, [])
+		setCloudMessage(null)
+	}
 
 	const handleAddMoreClick = () => {
 		fileInputRef.current?.click()
@@ -874,6 +922,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			setFiles((p) => [...p, ...newFiles])
 			setResults(null)
 			setError(null)
+			setCloudMessage(null)
 		}
 		// Reset input value so same file can be selected again
 		e.target.value = ""
@@ -881,7 +930,7 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 
 	useEffect(() => {
 		let cancelled = false
-		if (tool.id === "document-viewer" && files.length > 0) {
+		if (uiMode === "auto-process" && files.length > 0) {
 			const run = async () => {
 				setIsProcessing(true)
 				setError(null)
@@ -901,13 +950,14 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 		return () => {
 			cancelled = true
 		}
-	}, [files, tool, options])
+	}, [files, tool, options, uiMode])
 
 	const handleRun = async () => {
 		if (files.length === 0) return
 		setIsProcessing(true)
 		setError(null)
 		setResults(null)
+		setCloudMessage(null)
 
 		try {
 			const result = await tool.process(files, options)
@@ -944,48 +994,96 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 		download(zipResult)
 	}
 
-	const handleCropChange = useCallback(
-		(crop: { x: number; y: number; cropWidth: number; cropHeight: number }) => {
-			setOptions((p) => ({
-				...p,
-				x: crop.x,
-				y: crop.y,
-				cropWidth: crop.cropWidth,
-				cropHeight: crop.cropHeight,
-			}))
-		},
-		[],
-	)
+	const uploadToDrive = async (file: ProcessedFile) => {
+		setCloudMessage(null)
+		setActiveUploads((prev) => [...prev, file.name])
+
+		try {
+			await cloud.uploadProcessedFile(file)
+			setCloudMessage(`Saved "${file.name}" to Google Drive.`)
+		} catch (err) {
+			setCloudMessage(
+				err instanceof Error
+					? err.message
+					: "Failed to save the file to Drive.",
+			)
+		} finally {
+			setActiveUploads((prev) => prev.filter((name) => name !== file.name))
+		}
+	}
+
+	const uploadAllToDrive = async () => {
+		if (!results || results.length === 0) return
+		setCloudMessage(null)
+		setActiveUploads(results.map((file) => file.name))
+
+		try {
+			const uploaded = await cloud.uploadProcessedFiles(results)
+			setCloudMessage(
+				`Saved ${uploaded.length} file${uploaded.length === 1 ? "" : "s"} to Google Drive.`,
+			)
+		} catch (err) {
+			setCloudMessage(
+				err instanceof Error ? err.message : "Failed to save files to Drive.",
+			)
+		} finally {
+			setActiveUploads([])
+		}
+	}
+
+	const handleCropChange = (crop: {
+		x: number
+		y: number
+		cropWidth: number
+		cropHeight: number
+	}) => {
+		setOptions((p) => ({
+			...p,
+			x: crop.x,
+			y: crop.y,
+			cropWidth: crop.cropWidth,
+			cropHeight: crop.cropHeight,
+		}))
+	}
 
 	// For PDF delete/reorder, track modified page order
-	const handlePdfReorder = useCallback((newOrder: number[]) => {
+	const handlePdfReorder = (newOrder: number[]) => {
 		setOptions((p) => ({ ...p, order: newOrder.join(",") }))
-	}, [])
+	}
 
-	const handlePdfDeletePage = useCallback((pageNum: number) => {
+	const handlePdfDeletePage = (pageNum: number) => {
 		setOptions((p) => {
 			const current = String(p.pages || "")
 			const pages = current ? `${current},${pageNum}` : String(pageNum)
 			return { ...p, pages }
 		})
-	}, [])
+	}
 
 	const isPdfPageTool =
 		tool.id === "pdf-delete-pages" || tool.id === "pdf-reorder"
+	const recorderKind =
+		tool.id === "audio-recorder"
+			? "audio"
+			: tool.id === "camera-recorder"
+				? "camera"
+				: "screen"
+	const panelClassName =
+		"card rounded-3xl border border-base-content/8 bg-base-100/90 shadow-sm"
+	const panelBodyClassName = "card-body gap-4 p-5"
 
 	return (
 		<div className="flex flex-col gap-6">
 			{/* File input */}
-			{files.length === 0 ? (
+			{requiresFiles && files.length === 0 ? (
 				<FileDropzone
 					acceptedExtensions={tool.acceptedExtensions}
 					acceptedMimeTypes={[]}
 					multiple={tool.multiple}
 					onFilesSelected={handleFilesSelected}
 				/>
-			) : (
-				<div className="card bg-base-100 border border-base-content/10">
-					<div className="card-body p-4">
+			) : requiresFiles ? (
+				<div className={panelClassName}>
+					<div className={panelBodyClassName}>
 						<div className="flex items-center justify-between mb-3">
 							<div className="flex items-center gap-2">
 								<h4 className="font-semibold text-sm text-base-content/70">
@@ -1186,12 +1284,12 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 						)}
 					</div>
 				</div>
-			)}
+			) : null}
 
 			{/* Options */}
 			{tool.options.length > 0 && files.length > 0 && (
-				<div className="card bg-base-100 border border-base-content/10">
-					<div className="card-body p-4">
+				<div className={panelClassName}>
+					<div className={panelBodyClassName}>
 						<h4 className="font-semibold text-sm text-base-content/70 mb-3">
 							Options
 						</h4>
@@ -1288,39 +1386,39 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			)}
 
 			{/* Run */}
-			{files.length > 0 &&
-				tool.id !== "document-viewer" &&
-				tool.id !== "image-collage" && (
-					<button
-						type="button"
-						className={`btn btn-primary btn-lg ${isProcessing ? "btn-disabled" : ""}`}
-						onClick={handleRun}
-						disabled={isProcessing}
-						data-testid="run-button"
-					>
-						{isProcessing ? (
-							<>
-								<span className="loading loading-spinner loading-sm" />{" "}
-								Processing...
-							</>
-						) : (
-							`${results ? "Re-run" : "Run"} ${tool.name}`
-						)}
-					</button>
-				)}
+			{uiMode === "standard" && files.length > 0 && (
+				<button
+					type="button"
+					className={`btn btn-primary btn-lg ${isProcessing ? "btn-disabled" : ""}`}
+					onClick={handleRun}
+					disabled={isProcessing}
+					data-testid="run-button"
+				>
+					{isProcessing ? (
+						<>
+							<span className="loading loading-spinner loading-sm" />{" "}
+							Processing...
+						</>
+					) : (
+						`${results ? "Re-run" : "Run"} ${tool.name}`
+					)}
+				</button>
+			)}
 
 			{/* Image Collage */}
-			{tool.id === "image-collage" && files.length > 0 && (
-				<Suspense
-					fallback={
-						<div className="flex justify-center p-8">
-							<span className="loading loading-spinner loading-lg" />
-						</div>
-					}
-				>
-					<CollagePanel files={files} />
-				</Suspense>
+			{uiMode === "collage" && files.length > 0 && (
+				<CollagePanel files={files} />
 			)}
+
+			{uiMode === "recorder" && (
+				<RecorderPanel
+					kind={recorderKind}
+					onResultsChange={setResults}
+					onErrorChange={setError}
+				/>
+			)}
+
+			{uiMode === "todo" && <TodoListPanel />}
 
 			{/* Error */}
 			{error && (
@@ -1332,24 +1430,44 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 			{/* Results */}
 			{results && results.length > 0 && (
 				<div
-					className="card bg-base-100 border border-success/30"
+					className="card rounded-3xl border border-success/30 bg-base-100/90 shadow-sm"
 					data-testid="result-card"
 				>
-					<div className="card-body p-4">
+					<div className={panelBodyClassName}>
 						<div className="flex items-center justify-between mb-3">
 							<h4 className="font-semibold text-sm text-success flex items-center gap-2">
 								Results ({results.length}{" "}
 								{results.length === 1 ? "file" : "files"})
 							</h4>
-							{results.length > 1 && (
-								<button
-									type="button"
-									className="btn btn-success btn-sm"
-									onClick={downloadAll}
-								>
-									Download All (ZIP)
-								</button>
-							)}
+							<div className="flex flex-wrap items-center gap-2 justify-end">
+								{results.length > 1 && (
+									<button
+										type="button"
+										className="btn btn-success btn-sm"
+										onClick={downloadAll}
+									>
+										Download All (ZIP)
+									</button>
+								)}
+								{results.length > 1 && (
+									<button
+										type="button"
+										className="btn btn-outline btn-sm"
+										onClick={uploadAllToDrive}
+										disabled={
+											results.length === 0 ||
+											activeUploads.length > 0 ||
+											Boolean(cloud.disabledReason)
+										}
+										title={cloud.disabledReason ?? cloud.status}
+										data-testid="result-save-all-to-drive"
+									>
+										{activeUploads.length > 0
+											? "Saving..."
+											: "Save All to Drive"}
+									</button>
+								)}
+							</div>
 						</div>
 
 						<div className="flex flex-col gap-2">
@@ -1366,16 +1484,39 @@ export default function ToolPanel({ tool, presetDefaults }: ToolPanelProps) {
 											</p>
 										</div>
 									</div>
-									<button
-										type="button"
-										className="btn btn-primary btn-sm"
-										onClick={() => download(r)}
-									>
-										Download
-									</button>
+									<div className="flex items-center gap-2">
+										<button
+											type="button"
+											className="btn btn-outline btn-sm"
+											onClick={() => uploadToDrive(r)}
+											disabled={
+												activeUploads.includes(r.name) ||
+												Boolean(cloud.disabledReason)
+											}
+											title={cloud.disabledReason ?? cloud.status}
+											data-testid="result-save-to-drive"
+										>
+											{activeUploads.includes(r.name)
+												? "Saving..."
+												: "Save to Drive"}
+										</button>
+										<button
+											type="button"
+											className="btn btn-primary btn-sm"
+											onClick={() => download(r)}
+										>
+											Download
+										</button>
+									</div>
 								</div>
 							))}
 						</div>
+
+						{cloudMessage && (
+							<div className="alert alert-info mt-4">
+								<span>{cloudMessage}</span>
+							</div>
+						)}
 
 						{/* Image previews in results */}
 						{results.some((r) => r.blob.type.startsWith("image/")) && (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import Icon from "./Icon"
 
 interface LogEntry {
@@ -86,13 +86,13 @@ if (typeof window !== "undefined") {
 
 export default function DebugConsole() {
 	const [open, setOpen] = useState(false)
-	const [logs, setLogs] = useState<LogEntry[]>(globalLogs)
+	const [logs, setLogs] = useState<LogEntry[]>([])
 	const bottomRef = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
 		const update = (newLogs: LogEntry[]) => setLogs(newLogs)
 		subscribers.push(update)
-		setLogs([...globalLogs]) // Initial sync
+		setLogs([...globalLogs]) // Initial sync after mount
 		return () => {
 			subscribers = subscribers.filter((s) => s !== update)
 		}
@@ -105,10 +105,10 @@ export default function DebugConsole() {
 		}
 	}, [open, logs]) // added logs back to scroll on new entry
 
-	const clearLogs = useCallback(() => {
+	const clearLogs = () => {
 		globalLogs = []
 		notifySubscribers()
-	}, [])
+	}
 
 	const hasErrors = logs.some((l) => l.level === "error")
 

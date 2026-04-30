@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef } from "react"
+import { useState, useRef } from "react"
 import Icon from "./Icon"
 
 interface FileDropzoneProps {
@@ -17,37 +17,34 @@ export default function FileDropzone({
 	const [isDragging, setIsDragging] = useState(false)
 	const inputRef = useRef<HTMLInputElement>(null)
 
-	const handleDrag = useCallback((e: React.DragEvent) => {
+	const handleDrag = (e: React.DragEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
-	}, [])
+	}
 
-	const handleDragIn = useCallback((e: React.DragEvent) => {
+	const handleDragIn = (e: React.DragEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
 		if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
 			setIsDragging(true)
 		}
-	}, [])
+	}
 
-	const handleDragOut = useCallback((e: React.DragEvent) => {
+	const handleDragOut = (e: React.DragEvent) => {
 		e.preventDefault()
 		e.stopPropagation()
 		setIsDragging(false)
-	}, [])
+	}
 
-	const handleDrop = useCallback(
-		(e: React.DragEvent) => {
-			e.preventDefault()
-			e.stopPropagation()
-			setIsDragging(false)
-			const droppedFiles = Array.from(e.dataTransfer.files)
-			if (droppedFiles.length > 0) {
-				onFilesSelected(multiple ? droppedFiles : [droppedFiles[0]])
-			}
-		},
-		[multiple, onFilesSelected],
-	)
+	const handleDrop = (e: React.DragEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		setIsDragging(false)
+		const droppedFiles = Array.from(e.dataTransfer.files)
+		if (droppedFiles.length > 0) {
+			onFilesSelected(multiple ? droppedFiles : [droppedFiles[0]])
+		}
+	}
 
 	const handleClick = () => {
 		inputRef.current?.click()

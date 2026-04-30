@@ -5,8 +5,8 @@ import {
 	useRouter,
 } from "@tanstack/react-router"
 import { useEffect } from "react"
+import AppShellProvider from "../components/AppShellProvider"
 import Header from "../components/Header"
-import { prefetchFFmpeg } from "../lib/ffmpeg-processor"
 import "../styles.css"
 
 const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('Kitsy-theme')||'dracula';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`
@@ -20,7 +20,7 @@ export const Route = createRootRoute({
 			{
 				name: "description",
 				content:
-					"Convert, edit, and process files entirely in your browser. No uploads, no servers.",
+					"Convert, edit, and process files locally in your browser with optional Google Drive sync and offline-ready PWA support.",
 			},
 		],
 		links: [{ rel: "manifest", href: "/manifest.json" }],
@@ -32,12 +32,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	const router = useRouter()
 
 	useEffect(() => {
-		prefetchFFmpeg()
 		// Preload the tool component chunk correctly using the router
 		router.preloadRoute({ to: "/tool/$id", params: { id: "image-convert" } })
-		if ("serviceWorker" in navigator) {
-			navigator.serviceWorker.register("/sw.js")
-		}
 	}, [router])
 
 	return (
@@ -47,11 +43,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
 				<HeadContent />
 			</head>
-			<body className="min-h-screen bg-base-200 font-sans antialiased">
-				<div className="flex flex-col min-h-screen">
-					<Header />
-					<div className="flex-1">{children}</div>
-				</div>
+			<body
+				className="min-h-screen bg-base-200 font-sans antialiased"
+				suppressHydrationWarning
+			>
+				<AppShellProvider>
+					<div className="flex flex-col min-h-screen">
+						<Header />
+						<div className="flex-1">{children}</div>
+					</div>
+				</AppShellProvider>
 				<Scripts />
 			</body>
 		</html>

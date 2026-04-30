@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Stage, Layer, Image as KonvaImage, Transformer } from "react-konva"
 import type Konva from "konva"
 
@@ -86,37 +86,31 @@ export default function CollagePanel({ files }: CollagePanelProps) {
 		}
 	}, [selectedId])
 
-	const handleDragEnd = useCallback(
-		(id: string, e: Konva.KonvaEventObject<DragEvent>) => {
-			setImages((prev) =>
-				prev.map((img) =>
-					img.id === id ? { ...img, x: e.target.x(), y: e.target.y() } : img,
-				),
-			)
-		},
-		[],
-	)
+	const handleDragEnd = (id: string, e: Konva.KonvaEventObject<DragEvent>) => {
+		setImages((prev) =>
+			prev.map((img) =>
+				img.id === id ? { ...img, x: e.target.x(), y: e.target.y() } : img,
+			),
+		)
+	}
 
-	const handleTransformEnd = useCallback(
-		(id: string, e: Konva.KonvaEventObject<Event>) => {
-			const node = e.target as Konva.Image
-			setImages((prev) =>
-				prev.map((img) =>
-					img.id === id
-						? {
-								...img,
-								x: node.x(),
-								y: node.y(),
-								rotation: node.rotation(),
-								scaleX: node.scaleX(),
-								scaleY: node.scaleY(),
-							}
-						: img,
-				),
-			)
-		},
-		[],
-	)
+	const handleTransformEnd = (id: string, e: Konva.KonvaEventObject<Event>) => {
+		const node = e.target as Konva.Image
+		setImages((prev) =>
+			prev.map((img) =>
+				img.id === id
+					? {
+							...img,
+							x: node.x(),
+							y: node.y(),
+							rotation: node.rotation(),
+							scaleX: node.scaleX(),
+							scaleY: node.scaleY(),
+						}
+					: img,
+			),
+		)
+	}
 
 	const bringForward = () => {
 		if (!selectedId) return

@@ -1,7 +1,7 @@
-import { useMemo } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { z } from "zod"
 import { getAllTools, getCategories } from "../lib/tool-registry"
+import { rankToolsByQuery } from "../lib/search"
 import ToolCard from "../components/ToolCard"
 import Icon from "../components/Icon"
 
@@ -18,18 +18,7 @@ function HomePage() {
 	const { q: query = "" } = Route.useSearch()
 	const categories = getCategories()
 	const allTools = getAllTools()
-
-	const filteredTools = useMemo(() => {
-		const q = query.toLowerCase().trim()
-		if (!q) return null // null = show all by category
-		return allTools.filter(
-			(t) =>
-				t.name.toLowerCase().includes(q) ||
-				t.description.toLowerCase().includes(q) ||
-				t.category.toLowerCase().includes(q) ||
-				t.acceptedExtensions.some((ext) => ext.toLowerCase().includes(q)),
-		)
-	}, [query, allTools])
+	const filteredTools = rankToolsByQuery(allTools, query)
 
 	return (
 		<main className="max-w-6xl mx-auto px-4 pb-12 pt-8">
@@ -39,8 +28,8 @@ function HomePage() {
 					Your files, your browser.
 				</h1>
 				<p className="text-lg text-base-content/60 max-w-2xl mx-auto">
-					Convert, edit, and process files entirely in your browser. No uploads,
-					no servers just fast, private, installable (PWA) for offline use.
+					Convert, edit, and process files entirely in your browser. No Kitsy
+					backend, optional Google Drive sync, and installable offline as a PWA.
 				</p>
 			</section>
 
