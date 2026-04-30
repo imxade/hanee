@@ -1,6 +1,9 @@
 // ── Tool Registry ──
 // Each tool has a `process` function that takes files + options and returns results.
 
+import ExcelJS from "exceljs"
+import Papa from "papaparse"
+import { PDFDocument } from "pdf-lib"
 import type { ProcessedFile } from "./image-processor"
 import {
 	convertImage,
@@ -79,7 +82,11 @@ export interface ToolDefinition {
 	category: ToolCategory
 	icon: string // Tabler icon key (see ICON_MAP in components/Icon.tsx)
 	acceptedExtensions: string[]
+	producedExtensions?: string[]
+	keywords?: string[]
 	multiple: boolean
+	requiresFiles?: boolean
+	uiMode?: "standard" | "auto-process" | "collage" | "recorder" | "todo"
 	options: ToolOption[]
 	process: (
 		files: File[],
@@ -117,6 +124,17 @@ const tools: ToolDefinition[] = [
 			".svg",
 			".ico",
 		],
+		producedExtensions: [
+			".png",
+			".jpg",
+			".jpeg",
+			".webp",
+			".avif",
+			".bmp",
+			".svg",
+			".ico",
+		],
+		keywords: ["jpg to png", "png to webp", "transcode photo"],
 		multiple: true,
 		options: [
 			{
@@ -383,7 +401,6 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async (files, opts) => {
 			if (!opts.order) {
-				const { PDFDocument } = await import("pdf-lib")
 				const bytes = await files[0].arrayBuffer()
 				const doc = await PDFDocument.load(bytes)
 				const count = doc.getPageCount()
@@ -434,6 +451,8 @@ const tools: ToolDefinition[] = [
 		category: "pdf",
 		icon: "image",
 		acceptedExtensions: [".pdf"],
+		producedExtensions: [".png", ".jpg", ".jpeg"],
+		keywords: ["pdf to png", "pdf to jpg", "extract pages as images"],
 		multiple: false,
 		options: [
 			{
@@ -476,6 +495,8 @@ const tools: ToolDefinition[] = [
 			".3gp",
 			".gif",
 		],
+		producedExtensions: [".mp4", ".webm", ".mkv", ".avi", ".gif", ".webp"],
+		keywords: ["mp4 to webm", "video transcode", "gif maker"],
 		multiple: false,
 		options: [
 			{
@@ -688,6 +709,8 @@ const tools: ToolDefinition[] = [
 			".m4a",
 			".wma",
 		],
+		producedExtensions: [".mp3", ".wav", ".ogg", ".aac", ".flac"],
+		keywords: ["mp3 to wav", "audio transcode", "convert song format"],
 		multiple: true,
 		options: [
 			{
@@ -764,6 +787,58 @@ const tools: ToolDefinition[] = [
 		options: [],
 		process: async (files) => [await mergeAudio(files)],
 	},
+	{
+		id: "screen-recorder",
+		name: "Screen Recorder",
+		description:
+			"Record your desktop screen locally with optional camera picture-in-picture and microphone audio",
+		category: "video",
+		icon: "video",
+		acceptedExtensions: ["*"],
+		producedExtensions: [".webm"],
+		keywords: [
+			"screen capture",
+			"desktop recorder",
+			"picture in picture camera",
+			"record screen with mic",
+		],
+		multiple: false,
+		requiresFiles: false,
+		uiMode: "recorder",
+		options: [],
+		process: async () => [],
+	},
+	{
+		id: "camera-recorder",
+		name: "Camera Recorder",
+		description: "Record camera and microphone directly in the browser",
+		category: "video",
+		icon: "video",
+		acceptedExtensions: ["*"],
+		producedExtensions: [".webm"],
+		keywords: ["webcam recorder", "camera and mic", "selfie video"],
+		multiple: false,
+		requiresFiles: false,
+		uiMode: "recorder",
+		options: [],
+		process: async () => [],
+	},
+	{
+		id: "audio-recorder",
+		name: "Audio Recorder",
+		description:
+			"Record voice notes and microphone audio locally in the browser",
+		category: "audio",
+		icon: "audio",
+		acceptedExtensions: ["*"],
+		producedExtensions: [".webm", ".ogg"],
+		keywords: ["voice memo", "voice recorder", "microphone capture"],
+		multiple: false,
+		requiresFiles: false,
+		uiMode: "recorder",
+		options: [],
+		process: async () => [],
+	},
 
 	// ── PDF to PPTX ──
 
@@ -783,7 +858,9 @@ const tools: ToolDefinition[] = [
 			".ods",
 			".json",
 		],
+		keywords: ["preview file", "open document", "read local file"],
 		multiple: false,
+		uiMode: "auto-process",
 		options: [],
 		process: async (files) => {
 			const file = files[0]
@@ -797,7 +874,6 @@ const tools: ToolDefinition[] = [
 				return [{ blob: file, name: file.name }]
 			}
 			if (ext === ".xlsx") {
-				const ExcelJS = (await import("exceljs")).default
 				const workbook = new ExcelJS.Workbook()
 				await workbook.xlsx.load(await file.arrayBuffer())
 				const worksheet = workbook.worksheets[0]
@@ -824,7 +900,6 @@ const tools: ToolDefinition[] = [
 				return [{ blob, name: `${file.name}.html` }]
 			}
 			if (ext === ".csv") {
-				const Papa = (await import("papaparse")).default
 				const text = await file.text()
 				return new Promise((resolve) => {
 					Papa.parse(text, {
@@ -873,7 +948,9 @@ const tools: ToolDefinition[] = [
 			".svg",
 			".ico",
 		],
+		keywords: ["mood board", "poster", "combine photos"],
 		multiple: true,
+		uiMode: "collage",
 		options: [],
 		// Collage is handled by its own UI — process is a no-op
 		process: async (files) => files.map((f) => ({ blob: f, name: f.name })),
@@ -1194,6 +1271,8 @@ const tools: ToolDefinition[] = [
 		category: "data",
 		icon: "data",
 		acceptedExtensions: [".csv"],
+		producedExtensions: [".json"],
+		keywords: ["spreadsheet to json", "table to json"],
 		multiple: true,
 		options: [],
 		process: async (files) => batch(files, (f) => csvToJson(f)),
@@ -1205,6 +1284,8 @@ const tools: ToolDefinition[] = [
 		category: "data",
 		icon: "document",
 		acceptedExtensions: [".json"],
+		producedExtensions: [".csv"],
+		keywords: ["json to spreadsheet", "json table export"],
 		multiple: true,
 		options: [],
 		process: async (files) => batch(files, (f) => jsonToCsv(f)),
@@ -1219,6 +1300,22 @@ const tools: ToolDefinition[] = [
 		multiple: true,
 		options: [],
 		process: async (files) => batch(files, (f) => formatJson(f)),
+	},
+	{
+		id: "todo-list",
+		name: "Todo List",
+		description:
+			"Keep an autosaving local-first todo list with fuzzy search, reminders, and optional Google Drive sync",
+		category: "data",
+		icon: "check",
+		acceptedExtensions: ["*"],
+		producedExtensions: [".json"],
+		keywords: ["tasks", "checklist", "notes", "productivity"],
+		multiple: false,
+		requiresFiles: false,
+		uiMode: "todo",
+		options: [],
+		process: async () => [],
 	},
 ]
 
